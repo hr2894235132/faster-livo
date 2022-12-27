@@ -1,6 +1,8 @@
-## FasterLIVO
+# FasterLIVO
 参考fast-livo中的视觉部分，增加到faster-lio中并更新相关配置文件，通过体素的方式表征地图。
 仅供自己学习使用。
+### 数据集测试
+通过手持设备录制，livox mid70 + realsenceD455
 ## FasterLIO
 
 This is the code repository of FasterLIO by Chunge Bai, Tao Xiang, Yajie Chen, Haoqian Wang, Fang Zhang and Xiang Gao.
