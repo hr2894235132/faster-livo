@@ -6,6 +6,6 @@
 
 namespace faster_lio {
 
-std::map<std::string, Timer::TimerRecord> Timer::records_;
+    std::map<std::string, Timer::TimerRecord> Timer::records_;
 
 }

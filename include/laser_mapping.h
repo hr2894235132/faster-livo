@@ -29,6 +29,7 @@
 #include <opencv2/opencv.hpp>
 #include <vikit/camera_loader.h>
 #include "lidar_selection.h"
+#include "voxel_octree_map/voxel_map_util.hpp"
 
 namespace faster_lio {
 
@@ -70,6 +71,7 @@ namespace faster_lio {
 
         // sync lidar with imu ，camera
         bool SyncPackages(LidarMeasureGroup &meas);
+
 #ifdef USE_IKFOM
         /// interface of mtk, customized obseravtion model
         void ObsModel(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data);
@@ -88,7 +90,8 @@ namespace faster_lio {
 
         void PublishFrameEffectWorld(const ros::Publisher &pub_laser_cloud_effect_world);
 
-        void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes, lidar_selection::LidarSelectorPtr lidar_selector);
+        void publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes,
+                                     lidar_selection::LidarSelectorPtr lidar_selector);
 
         void publish_visual_world_sub_map(const ros::Publisher &pubSubVisualCloud);
 
@@ -141,6 +144,9 @@ namespace faster_lio {
 //    lidar_selection::LidarSelectorPtr lidar_selector(new lidar_selection::LidarSelector(grid_size, new SparseMap));
         lidar_selection::LidarSelectorPtr lidar_selector{new lidar_selection::LidarSelector(grid_size, new SparseMap)};
 
+        // for Plane Map
+        bool init_map = false;
+        std::unordered_map<VOXEL_LOC, OctoTree *> voxel_map;
 
         /// params
         /// local map related
@@ -155,6 +161,7 @@ namespace faster_lio {
         std::string map_file_path_;
         bool ncc_en;
         int dense_map_en = 1;
+        int depth_img_en_ = 0;
         int img_en = 1;
         int lidar_en = 1;
         int debug = 0;
@@ -230,6 +237,12 @@ namespace faster_lio {
         double first_img_time = -1.0;
         double last_timestamp_img_ = -1.0;
         bool flg_reset_;
+        bool write_kitti_log = false;
+        // params for publish function
+        bool publish_voxel_map = false;
+        int publish_max_voxel_layer = 0;
+        bool publish_point_cloud = false;
+        int pub_point_cloud_skip = 1;
 
 
         /// statistics and flags ///
@@ -241,6 +254,7 @@ namespace faster_lio {
         int pcd_index_ = 0;
         double lidar_mean_scantime_ = 0.0;
         int scan_num_ = 0;
+        int scanIdx = 0;
         bool timediff_set_flg_ = false;
         int effect_feat_num_ = 0, frame_num_ = 0;
         int publish_count = 0, iterCount = 0;
@@ -281,6 +295,8 @@ namespace faster_lio {
         geometry_msgs::PoseStamped msg_body_pose_;
         geometry_msgs::Quaternion geoQuat;
 
+        FILE *fp_kitti;
+
         /*** variables definition ***/
 #ifndef USE_IKFOM
         VD(DIM_STATE) solution; // 18*1
@@ -290,6 +306,19 @@ namespace faster_lio {
         PointType pointOri, pointSel, coeff;
 #endif
         double deltaT, deltaR, aver_time_consu = 0, aver_time_icp = 0, aver_time_match = 0, aver_time_solve = 0, aver_time_const_H_time = 0;
+        // the ranging uncertainty and the bearing direction uncertainty
+        double ranging_cov = 0.0;
+        double angle_cov = 0.0;
+
+        // params for voxel mapping algorithm
+        double min_eigen_value = 0.003;
+        int max_layer = 0;
+
+        int max_cov_points_size = 50;
+        int max_points_size = 50;
+        double sigma_num = 2.0;
+        double max_voxel_size = 1.0;
+        std::vector<int> layer_size;
 
     };
 

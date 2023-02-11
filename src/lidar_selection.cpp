@@ -347,7 +347,9 @@ namespace faster_lio {
                     }
                 }
             }
-            imshow("depth_img", depth_img);
+            if(depth_img_en_){
+                imshow("depth_img", depth_img);
+            }
             printf("B. projection: %.6lf \n", omp_get_wtime() - ts0);
 
             /* C.feat_map.find */

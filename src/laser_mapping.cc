@@ -12,6 +12,8 @@
 
 #define DEBUG_FILE_DIR(name)     (std::string(std::string(ROOT_DIR) + "Log/"+ name))
 
+inline void kitti_log(FILE *fp) {}
+
 namespace faster_lio {
 
     // TODO：12.1 hr 打印状态信息
@@ -83,6 +85,7 @@ namespace faster_lio {
         nh.param<int>("lidar_enable", lidar_en, 1);
         nh.param<int>("debug", debug, 0);
         nh.param<bool>("ncc_en", ncc_en, false);
+        nh.param<int>("depth_img_enable", depth_img_en_, 1);
         nh.param<int>("min_img_count", MIN_IMG_COUNT, 1000);
         nh.param<double>("cam_fx", cam_fx, 453.483063); // 相机内参
         nh.param<double>("cam_fy", cam_fy, 453.254913);
@@ -133,6 +136,7 @@ namespace faster_lio {
         nh.param<int>("patch_size", patch_size, 4);
         nh.param<double>("outlier_threshold", outlier_threshold, 100);
         nh.param<double>("ncc_thre", ncc_thre, 100);
+
 
         // TODO:下面两个参数的含义? 貌似是新数据结构里用到的参数
         nh.param<float>("ivox_grid_resolution", ivox_options_.resolution_, 0.2);
@@ -303,7 +307,12 @@ namespace faster_lio {
         state_point_ = kf_.get_x(); // 前向传播后body的状态预测值 body:imu
         pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I; // global系下 lidar的位置
 #else
+        auto undistort_start = std::chrono::high_resolution_clock::now();
         p_imu_->Process2(LidarMeasures_, state, scan_undistort_);
+        auto undistort_end = std::chrono::high_resolution_clock::now();
+        auto undistort_time =
+                std::chrono::duration_cast<std::chrono::duration<double>>(undistort_end - undistort_start).count() *
+                1000;
         state_propagat = state;
 #endif
 //        //TODO:重力对齐
@@ -343,14 +352,61 @@ namespace faster_lio {
         fast_lio_is_ready = true;
 
         /// the first scan
-        if (flg_first_scan_) {
-            ivox_->AddPoints(scan_undistort_->points);
-            first_lidar_time_ = LidarMeasures_.lidar_beg_time_;
-            flg_first_scan_ = false;
-            return;
-        }
+//        if (flg_first_scan_) {
+//            ivox_->AddPoints(scan_undistort_->points);
+//            first_lidar_time_ = LidarMeasures_.lidar_beg_time_;
+//            flg_first_scan_ = false;
+//            return;
+//        }
         // 检查当前lidar数据时间，与最早lidar数据时间是否足够
         flg_EKF_inited_ = (LidarMeasures_.lidar_beg_time_ - first_lidar_time_) >= options::INIT_TIME; // 0.1
+
+        // TODO:2023.02.09 初始化体素-八叉树表征地图
+        if (flg_EKF_inited_ && !init_map) {
+            pcl::PointCloud<pcl::PointXYZI>::Ptr world_lidar_(new pcl::PointCloud<pcl::PointXYZI>);
+            Eigen::Quaterniond q(state.rot_end);
+            transformLidar(state, p_imu_, scan_undistort_, world_lidar_);
+            std::vector<pointWithCov> pv_list;
+            /* 计算每个点的协方差 */
+            for (size_t i = 0; i < world_lidar_->size(); ++i) {
+                pointWithCov pv;
+                pv.point << world_lidar_->points[i].x, world_lidar_->points[i].y, world_lidar_->points[i].z;
+                V3D point_this(scan_undistort_->points[i].x, scan_undistort_->points[i].y,
+                               scan_undistort_->points[i].z);
+                // if z=0, error will occur in calcBodyCov. To be solved
+                if (point_this[2] == 0) point_this[2] = 0.001;
+                M3D cov;
+                calcBodyCov(point_this, ranging_cov, angle_cov, cov);
+                point_this += lidar_T_wrt_IMU;
+                M3D point_crossmat; // 斜对角矩阵
+                point_crossmat << SKEW_SYM_MATRIX(point_this);
+                // TODO:按照论文中公式（3）修改cov计算
+                cov = state.rot_end * cov * state.rot_end.transpose() +
+                      state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) *
+                      (-point_crossmat).transpose() * state.rot_end.transpose() +
+                      state.cov.block<3, 3>(3, 3);
+                pv.cov = cov;
+                pv_list.push_back(pv);
+                Eigen::Vector3d sigma_pv = pv.cov.diagonal();
+                sigma_pv[0] = sqrt(sigma_pv[0]);
+                sigma_pv[1] = sqrt(sigma_pv[1]);
+                sigma_pv[2] = sqrt(sigma_pv[2]);
+            }
+
+            buildVoxelMap(pv_list, max_voxel_size, max_layer, layer_size, max_points_size, max_points_size,
+                          min_eigen_value, voxel_map);
+            std::cout << "build voxel map" << std::endl;
+            if (write_kitti_log) {
+                kitti_log(fp_kitti);
+            }
+
+            scanIdx++;
+            if (publish_voxel_map) {
+                pubVoxelMap(voxel_map, publish_max_voxel_layer, voxel_map_pub);
+            }
+            init_map = true;
+            return;
+        }
 
         /* TODO:12.14 视觉部分迭代优化 */
         Timer::Evaluate(
@@ -482,213 +538,225 @@ namespace faster_lio {
             for (int i = 0; i < 1; i++) {}
         }
 
-        if (lidar_en) {
+        Timer::Evaluate(
+                [&, this]() {
+                    if (lidar_en) {
 //            std::vector<size_t> index(cur_pts);
 //            for (size_t i = 0; i < index.size(); ++i) {
 //                index[i] = i;
 //            }
-            for (iterCount = -1; iterCount < options::NUM_MAX_ITERATIONS && flg_EKF_inited_; iterCount++) {
-                match_start = omp_get_wtime();
-                PointCloudType().swap(*laserCloudOri);
-                PointCloudType().swap(*corr_normvect);
-                total_residual_ = 0.0;
-                /** closest surface search and residual computation **/
+                        for (iterCount = -1; iterCount < options::NUM_MAX_ITERATIONS && flg_EKF_inited_; iterCount++) {
+                            match_start = omp_get_wtime();
+                            PointCloudType().swap(*laserCloudOri);
+                            PointCloudType().swap(*corr_normvect);
+                            total_residual_ = 0.0;
+                            /** closest surface search and residual computation **/
 #ifdef MP_EN
-                omp_set_num_threads(MP_PROC_NUM);
+                            omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
 //                std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i)
-                for (int i = 0; i < cur_pts; i++) {
-                    PointType &point_body = scan_down_body_->points[i];
-                    PointType &point_world = scan_down_world_->points[i];
-                    V3D p_body(point_body.x, point_body.y, point_body.z);
-                    /* transform to world frame */
-                    PointBodyToWorld(&point_body, &point_world); // to world frame
-                    point_world.intensity = point_body.intensity;
-                    vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS); // #define 5
-                    auto &points_near = nearest_points_[i];
+                            for (int i = 0; i < cur_pts; i++) {
+                                PointType &point_body = scan_down_body_->points[i];
+                                PointType &point_world = scan_down_world_->points[i];
+                                V3D p_body(point_body.x, point_body.y, point_body.z);
+                                /* transform to world frame */
+                                PointBodyToWorld(&point_body, &point_world); // to world frame
+                                point_world.intensity = point_body.intensity;
+                                vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS); // #define 5
+                                auto &points_near = nearest_points_[i];
 //                    auto &points_near = pointSearchInd_surf[i];
-                    VF(4) pabcd;
-                    uint8_t search_flag = 0;
-                    double search_start = omp_get_wtime();
-                    if (nearest_search_en) {
-                        /** Find the closest surfaces in the map **/
-                        // 使用ivox_获取地图坐标系中与point_world最近的5个点（N=options::NUM_MATCH_POINTS 5）
-                        ivox_->GetClosestPoint(point_world, points_near, options::NUM_MATCH_POINTS);
-                        // 设置标志位，表明是否找到足够的接近点(3个)
-                        point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
-                        // 判断近邻点是否形成平面（找到最近的点>=5个，说明可以形成平面），平面法向量存储于plane_coef[i](pabcd)
-                        if (point_selected_surf_[i]) {
-                            // 平面拟合并且获取对应的单位平面法向量plane_coef[i](4*1)
+                                VF(4) pabcd;
+                                uint8_t search_flag = 0;
+                                double search_start = omp_get_wtime();
+                                if (nearest_search_en) {
+                                    /** Find the closest surfaces in the map **/
+                                    // 使用ivox_获取地图坐标系中与point_world最近的5个点（N=options::NUM_MATCH_POINTS 5）
+                                    ivox_->GetClosestPoint(point_world, points_near, options::NUM_MATCH_POINTS);
+                                    // 设置标志位，表明是否找到足够的接近点(3个)
+                                    point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
+                                    // 判断近邻点是否形成平面（找到最近的点>=5个，说明可以形成平面），平面法向量存储于plane_coef[i](pabcd)
+                                    if (point_selected_surf_[i]) {
+                                        // 平面拟合并且获取对应的单位平面法向量plane_coef[i](4*1)
 //                            point_selected_surf_[i] =
 //                                    esti_plane(plane_coef_[i], points_near, options::ESTI_PLANE_THRESHOLD);
-                            point_selected_surf_[i] =
-                                    esti_plane(pabcd, points_near, options::ESTI_PLANE_THRESHOLD);
-                            // ESTI_PLANE_THRESHOLD:0.1
-                        }
-                    }
-                    if (!point_selected_surf_[i] || points_near.size() < options::NUM_MATCH_POINTS) continue;
-                    // 如果近邻点可以形成平面，则计算point-plane距离残差 esti_plane(pabcd, points_near, 0.1f)
-                    if (point_selected_surf_[i]) {
+                                        point_selected_surf_[i] =
+                                                esti_plane(pabcd, points_near, options::ESTI_PLANE_THRESHOLD);
+                                        // ESTI_PLANE_THRESHOLD:0.1
+                                    }
+                                }
+                                if (!point_selected_surf_[i] || points_near.size() < options::NUM_MATCH_POINTS)
+                                    continue;
+                                // 如果近邻点可以形成平面，则计算point-plane距离残差 esti_plane(pabcd, points_near, 0.1f)
+                                if (point_selected_surf_[i]) {
 //                        auto temp = point_world.getVector4fMap();
 //                        temp[3] = 1.0;
 //                        float pd2 = plane_coef_[i].dot(temp); // 点到面距离 (|AB|*n)/|n|
-                        float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z +
-                                    pabcd(3);
-                        bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
-                        if (valid_corr) {
-                            point_selected_surf_[i] = true;
-                            normvec->points[i].x = pabcd(0); // hr: save normvec
-                            normvec->points[i].y = pabcd(1);
-                            normvec->points[i].z = pabcd(2);
-                            normvec->points[i].intensity = pd2;
-                            residuals_[i] = pd2; // 更新残差
-                        }
-                    }
-                }
-                effect_feat_num_ = 0;
+                                    float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
+                                                pabcd(2) * point_world.z +
+                                                pabcd(3);
+                                    bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
+                                    if (valid_corr) {
+                                        point_selected_surf_[i] = true;
+                                        normvec->points[i].x = pabcd(0); // hr: save normvec
+                                        normvec->points[i].y = pabcd(1);
+                                        normvec->points[i].z = pabcd(2);
+                                        normvec->points[i].intensity = pd2;
+                                        residuals_[i] = pd2; // 更新残差
+                                    }
+                                }
+                            }
+                            effect_feat_num_ = 0;
 //                corr_pts_.resize(cur_pts); // 存点坐标及对应的残差
 //                corr_norm_.resize(cur_pts); // 存平面单位法向量
-                laserCloudOri->resize(cur_pts);
-                corr_normvect->reserve(cur_pts);
-                for (int i = 0; i < cur_pts; i++) {
-                    // todo 新增残差 <= 2.0约束
-                    if (point_selected_surf_[i] && (residuals_[i] <= 2.0)) {
-                        laserCloudOri->points[effect_feat_num_] = scan_down_body_->points[i];
-                        corr_normvect->points[effect_feat_num_] = normvec->points[i];
+                            laserCloudOri->resize(cur_pts);
+                            corr_normvect->reserve(cur_pts);
+                            for (int i = 0; i < cur_pts; i++) {
+                                // todo 新增残差 <= 2.0约束
+                                if (point_selected_surf_[i] && (residuals_[i] <= 2.0)) {
+                                    laserCloudOri->points[effect_feat_num_] = scan_down_body_->points[i];
+                                    corr_normvect->points[effect_feat_num_] = normvec->points[i];
 //                        corr_norm_[effect_feat_num_] = plane_coef_[i];
 //                        corr_pts_[effect_feat_num_] = scan_down_body_->points[i].getVector4fMap();
 //                        corr_pts_[effect_feat_num_][3] = residuals_[i];
-                        total_residual_ += residuals_[i];
-                        effect_feat_num_++; // 记录有效点（特征点）的数量（Effective Points）
-                    }
-                }
+                                    total_residual_ += residuals_[i];
+                                    effect_feat_num_++; // 记录有效点（特征点）的数量（Effective Points）
+                                }
+                            }
 //                corr_pts_.resize(effect_feat_num_);
 //                corr_norm_.resize(effect_feat_num_);
 
-                res_mean_last = total_residual_ / effect_feat_num_;
-                if (effect_feat_num_ < 1) {
-                    LOG(WARNING) << "No Effective Points!";
-                    continue; // todo :return? or continue or break
-                }
-                // debug:
-                cout << "[ mapping ]: Effective feature num: " << effect_feat_num_ << " res_mean_last " << res_mean_last
-                     << endl;
-                printf("[ LIO ]: time: fov_check and readd: %0.6f match: %0.6f solve: %0.6f  "
-                       "ICP: %0.6f  map incre: %0.6f total: %0.6f icp: %0.6f construct H: %0.6f.\n",
-                       t1 - t0, aver_time_match, aver_time_solve, t3 - t1, t5 - t3, aver_time_consu,
-                       aver_time_icp, aver_time_const_H_time);
-                match_time += omp_get_wtime() - match_start; // 匹配结束
-                solve_start = omp_get_wtime(); // 迭代求解开始
+                            res_mean_last = total_residual_ / effect_feat_num_;
+                            if (effect_feat_num_ < 1) {
+                                LOG(WARNING) << "No Effective Points!";
+                                continue; // todo :return? or continue or break
+                            }
+                            // debug:
+                            cout << "[ mapping ]: Effective feature num: " << effect_feat_num_ << " res_mean_last "
+                                 << res_mean_last
+                                 << endl;
+//                printf("[ LIO ]: time: fov_check and readd: %0.6f match: %0.6f solve: %0.6f  "
+//                       "ICP: %0.6f  map incre: %0.6f total: %0.6f icp: %0.6f construct H: %0.6f.\n",
+//                       t1 - t0, aver_time_match, aver_time_solve, t3 - t2, t5 - t3, aver_time_consu,
+//                       aver_time_icp, aver_time_const_H_time);
+                            match_time += omp_get_wtime() - match_start; // 匹配结束
+                            solve_start = omp_get_wtime(); // 迭代求解开始
 
-                /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
-                MatrixXd H_x(effect_feat_num_, 12);
-                MatrixXd Hsub(effect_feat_num_, 6); // note: 其他列为0
-                VectorXd meas_vec(effect_feat_num_);
+                            /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
+                            MatrixXd H_x(effect_feat_num_, 12);
+                            MatrixXd Hsub(effect_feat_num_, 6); // note: 其他列为0
+                            VectorXd meas_vec(effect_feat_num_);
 
-                // 取状态中的外参
-                const M3F off_R = state.rot_end.cast<float>();
-                const V3F off_t = state.pos_end.cast<float>();
-                for (int i = 0; i < effect_feat_num_; i++) {
-                    const PointType &laser_p = laserCloudOri->points[i];
-                    V3D point_this(laser_p.x, laser_p.y, laser_p.z);
-                    point_this += lidar_T_wrt_IMU; // TODO： NOTE：配置参数中雷达和imu的相对旋转为单位阵
-                    M3D point_crossmat;
-                    point_crossmat << SKEW_SYM_MATRIX(point_this); // 斜对称矩阵
-                    /*** get the normal vector of closest surface/corner ***/
-                    const PointType &norm_p = corr_normvect->points[i];
-                    V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
-                    /*** calculate the Measuremnt Jacobian matrix H ***/
-                    V3D A(point_crossmat * state.rot_end.transpose() * norm_vec); // 公式(50)
-                    Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z;
+                            // 取状态中的外参
+                            const M3F off_R = state.rot_end.cast<float>();
+                            const V3F off_t = state.pos_end.cast<float>();
+                            for (int i = 0; i < effect_feat_num_; i++) {
+                                const PointType &laser_p = laserCloudOri->points[i];
+                                V3D point_this(laser_p.x, laser_p.y, laser_p.z);
+                                point_this += lidar_T_wrt_IMU; // TODO： NOTE：配置参数中雷达和imu的相对旋转为单位阵
+                                M3D point_crossmat;
+                                point_crossmat << SKEW_SYM_MATRIX(point_this); // 斜对称矩阵
+                                /*** get the normal vector of closest surface/corner ***/
+                                const PointType &norm_p = corr_normvect->points[i];
+                                V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+                                /*** calculate the Measuremnt Jacobian matrix H ***/
+                                V3D A(point_crossmat * state.rot_end.transpose() * norm_vec); // 公式(50)
+                                Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z;
 
-                    /*** Measuremnt: distance to the closest surface/corner ***/
-                    meas_vec(i) = -norm_p.intensity;
-                }
-                solve_const_H_time += omp_get_wtime() - solve_start;
+                                /*** Measuremnt: distance to the closest surface/corner ***/
+                                meas_vec(i) = -norm_p.intensity;
+                            }
+                            solve_const_H_time += omp_get_wtime() - solve_start;
 
-                MatrixXd K(DIM_STATE, effect_feat_num_);
+                            MatrixXd K(DIM_STATE, effect_feat_num_);
 
-                EKF_stop_flg_ = false;
-                flg_EKF_converged_ = false;
-                /*** Iterative Kalman Filter Update ***/
-                if (!flg_EKF_inited_) {
-                    cout << "||||||||||Initiallizing LiDar||||||||||" << endl;
-                    /*** only run in initialization period ***/
-                    MatrixXd H_init(MD(9, DIM_STATE)::Zero());
-                    MatrixXd z_init(VD(9)::Zero());
-                    H_init.block<3, 3>(0, 0) = M3D::Identity();
-                    H_init.block<3, 3>(3, 3) = M3D::Identity();
-                    H_init.block<3, 3>(6, 15) = M3D::Identity();
-                    z_init.block<3, 1>(0, 0) = -Log(state.rot_end);
-                    z_init.block<3, 1>(0, 0) = -state.pos_end;
-                    auto H_init_T = H_init.transpose();
-                    auto &&K_init = state.cov * H_init_T *
-                                    (H_init * state.cov * H_init_T + 0.0001 * MD(9, 9)::Identity()).inverse();
-                    solution = K_init * z_init;
-                    state.resetpose(); // R：单位阵；p,v:Zero3d
-                    EKF_stop_flg_ = true;
-                } else {
-                    auto &&Hsub_T = Hsub.transpose();
-                    auto &&HTz = Hsub_T * meas_vec;
-                    H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
-                    MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H + (state.cov /
-                                                               LASER_POINT_COV).inverse()).inverse(); // 新卡尔曼增益公式前半部分
-                    G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
-                    auto vec = state_propagat - state; // error
-                    solution = K_1.block<DIM_STATE, 6>(0, 0) * HTz + vec -
-                               G.block<DIM_STATE, 6>(0, 0) * vec.block<6, 1>(0, 0); // 公式(65)
-                    if (0)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
-                    {
-                        VD(6) V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
-                        cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
-                        EKF_stop_flg_ = true;
-                        solution.block<6, 1>(9, 0).setZero();
+                            EKF_stop_flg_ = false;
+                            flg_EKF_converged_ = false;
+                            /*** Iterative Kalman Filter Update ***/
+                            if (!flg_EKF_inited_) {
+                                cout << "||||||||||Initiallizing LiDar||||||||||" << endl;
+                                /*** only run in initialization period ***/
+                                MatrixXd H_init(MD(9, DIM_STATE)::Zero());
+                                MatrixXd z_init(VD(9)::Zero());
+                                H_init.block<3, 3>(0, 0) = M3D::Identity();
+                                H_init.block<3, 3>(3, 3) = M3D::Identity();
+                                H_init.block<3, 3>(6, 15) = M3D::Identity();
+                                z_init.block<3, 1>(0, 0) = -Log(state.rot_end);
+                                z_init.block<3, 1>(0, 0) = -state.pos_end;
+                                auto H_init_T = H_init.transpose();
+                                auto &&K_init = state.cov * H_init_T *
+                                                (H_init * state.cov * H_init_T +
+                                                 0.0001 * MD(9, 9)::Identity()).inverse();
+                                solution = K_init * z_init;
+                                state.resetpose(); // R：单位阵；p,v:Zero3d
+                                EKF_stop_flg_ = true;
+                            } else {
+                                auto &&Hsub_T = Hsub.transpose();
+                                auto &&HTz = Hsub_T * meas_vec;
+                                H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
+                                MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H + (state.cov /
+                                                                           LASER_POINT_COV).inverse()).inverse(); // 新卡尔曼增益公式前半部分
+                                G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
+                                auto vec = state_propagat - state; // error
+                                solution = K_1.block<DIM_STATE, 6>(0, 0) * HTz + vec -
+                                           G.block<DIM_STATE, 6>(0, 0) * vec.block<6, 1>(0, 0); // 公式(65)
+                                if (0)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
+                                {
+                                    VD(6) V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
+                                    cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
+                                    EKF_stop_flg_ = true;
+                                    solution.block<6, 1>(9, 0).setZero();
+                                }
+                                state += solution;
+                                rot_add = solution.block<3, 1>(0, 0);
+                                t_add = solution.block<3, 1>(3, 0);
+
+                                if ((rot_add.norm() * 57.3 < 0.01) &&
+                                    (t_add.norm() * 100 < 0.015)) { // TODO: threshold EKF收敛
+                                    flg_EKF_converged_ = true;
+                                }
+
+                                deltaR = rot_add.norm() * 57.3; // 弧度 to 角度
+                                deltaT = t_add.norm() * 100; // m to cm
+                            }
+                            euler_cur_ = RotMtoEuler(state.rot_end);
+
+                            /*** Rematch Judgement ***/
+                            nearest_search_en = false;
+                            if (flg_EKF_converged_ ||
+                                ((rematch_num == 0) && (iterCount == (options::NUM_MAX_ITERATIONS - 2)))) {
+                                nearest_search_en = true;
+                                rematch_num++;
+                            }
+                            /*** Convergence Judgements and Covariance Update ***/
+                            if (!EKF_stop_flg_ &&
+                                (rematch_num >= 2 || (iterCount == options::NUM_MAX_ITERATIONS - 1))) {
+                                if (flg_EKF_inited_) {
+                                    /*** Covariance Update ***/
+                                    // G.setZero();
+                                    // G.block<DIM_STATE,6>(0,0) = K * Hsub;
+                                    state.cov = (I_STATE - G) * state.cov;
+                                    total_distance_ += (state.pos_end - position_last_).norm();
+                                    position_last_ = state.pos_end;
+                                    geoQuat = tf::createQuaternionMsgFromRollPitchYaw
+                                            (euler_cur_(0), euler_cur_(1), euler_cur_(2));
+
+                                    VD(DIM_STATE) K_sum = K.rowwise().sum(); // Matrix<double, ((18)), 1>
+                                    VD(DIM_STATE) P_diag = state.cov.diagonal();
+                                    // cout<<"K: "<<K_sum.transpose()<<endl;
+                                    // cout<<"P: "<<P_diag.transpose()<<endl;
+                                    // cout<<"position: "<<state.pos_end.transpose()<<" total distance: "<<total_distance<<endl;
+                                }
+                                EKF_stop_flg_ = true;
+                            }
+                            solve_time += omp_get_wtime() - solve_start;
+
+                            if (EKF_stop_flg_) break;
+                        }
                     }
-                    state += solution;
-                    rot_add = solution.block<3, 1>(0, 0);
-                    t_add = solution.block<3, 1>(3, 0);
+                },
+                "lidar IEKF");
 
-                    if ((rot_add.norm() * 57.3 < 0.01) && (t_add.norm() * 100 < 0.015)) { // TODO: threshold EKF收敛
-                        flg_EKF_converged_ = true;
-                    }
-
-                    deltaR = rot_add.norm() * 57.3; // 弧度 to 角度
-                    deltaT = t_add.norm() * 100; // m to cm
-                }
-                euler_cur_ = RotMtoEuler(state.rot_end);
-
-                /*** Rematch Judgement ***/
-                nearest_search_en = false;
-                if (flg_EKF_converged_ || ((rematch_num == 0) && (iterCount == (options::NUM_MAX_ITERATIONS - 2)))) {
-                    nearest_search_en = true;
-                    rematch_num++;
-                }
-                /*** Convergence Judgements and Covariance Update ***/
-                if (!EKF_stop_flg_ && (rematch_num >= 2 || (iterCount == options::NUM_MAX_ITERATIONS - 1))) {
-                    if (flg_EKF_inited_) {
-                        /*** Covariance Update ***/
-                        // G.setZero();
-                        // G.block<DIM_STATE,6>(0,0) = K * Hsub;
-                        state.cov = (I_STATE - G) * state.cov;
-                        total_distance_ += (state.pos_end - position_last_).norm();
-                        position_last_ = state.pos_end;
-                        geoQuat = tf::createQuaternionMsgFromRollPitchYaw
-                                (euler_cur_(0), euler_cur_(1), euler_cur_(2));
-
-                        VD(DIM_STATE) K_sum = K.rowwise().sum(); // Matrix<double, ((18)), 1>
-                        VD(DIM_STATE) P_diag = state.cov.diagonal();
-                        // cout<<"K: "<<K_sum.transpose()<<endl;
-                        // cout<<"P: "<<P_diag.transpose()<<endl;
-                        // cout<<"position: "<<state.pos_end.transpose()<<" total distance: "<<total_distance<<endl;
-                    }
-                    EKF_stop_flg_ = true;
-                }
-                solve_time += omp_get_wtime() - solve_start;
-
-                if (EKF_stop_flg_) break;
-            }
-        }
         // debug
         cout << "[ mapping ]: iteration count: " << iterCount + 1 << endl;
 #endif

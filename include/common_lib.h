@@ -558,6 +558,9 @@ namespace std{
             // second and third and combine them using XOR
             // and bit shifting:
             //   return ((hash<int64_t>()(s.x) ^ (hash<int64_t>()(s.y) << 1)) >> 1) ^ (hash<int64_t>()(s.z) << 1);
+            /* 以体素的空间坐标v（是整数坐标，与物理坐标的关系是乘以体素的边长）作为 key，对v的三个维度各乘以一个很大的整数再做异或位运算，
+             * 得到的结果再对哈希表的容量N取余，得到体素的 index —— id_v。实际应用中，我们是先有点再去找体素，因此需要先把点的坐标
+             * 除以体素边长再取整算出 */
             return (((hash<int64_t>()(s.z)*HASH_P)%MAX_N + hash<int64_t>()(s.y))*HASH_P)%MAX_N + hash<int64_t>()(s.x);
         }
     };
