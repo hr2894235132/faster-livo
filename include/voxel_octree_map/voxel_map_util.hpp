@@ -308,7 +308,7 @@ public:
 
             plane->is_plane = true;
             plane->is_update = true;
-        }else{
+        } else {
             plane->normal << evecs.real()(0, evalsMin), evecs.real()(1, evalsMin),
                     evecs.real()(2, evalsMin);
             plane->y_normal << evecs.real()(0, evalsMid), evecs.real()(1, evalsMid),
@@ -740,18 +740,136 @@ void BuildResidualListOMP(const unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
     }
 }
 
-void GetUpdatePlane(const OctoTree *current_octo, const int pub_max_voxel_layer, std::vector<Plane> &plane_list){
-
+void GetUpdatePlane(const OctoTree *current_octo, const int pub_max_voxel_layer, std::vector<Plane> &plane_list) {
+    if (current_octo->layer_ > pub_max_voxel_layer) {
+        return;
+    }
+    if (current_octo->plane_ptr_->is_plane) {
+        plane_list.push_back(*current_octo->plane_ptr_);
+    }
+    if (current_octo->layer_ < current_octo->max_layer_) {
+        if (!current_octo->plane_ptr_->is_plane) {
+            for (auto leave: current_octo->leaves_) {
+                if (leave != nullptr) {
+                    GetUpdatePlane(leave, pub_max_voxel_layer, plane_list);
+                }
+            }
+        }
+    }
 }
 
-void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree*> &voxel_map, const int pub_max_voxel_layer, const ros::Publisher &plane_map_pub){
+void mapJet(double v, double vmin, double vmax, uint8_t &r, uint8_t &g, uint8_t &b) {
+    r = 255;
+    g = 255;
+    b = 255;
+
+    if (v < vmin) {
+        v = vmin;
+    }
+
+    if (v > vmax) {
+        v = vmax;
+    }
+
+    double dr, dg, db;
+
+    if (v < 0.1242) {
+        db = 0.504 + ((1. - 0.504) / 0.1242) * v;
+        dg = dr = 0.;
+    } else if (v < 0.3747) {
+        db = 1.;
+        dr = 0.;
+        dg = (v - 0.1242) * (1. / (0.3747 - 0.1242));
+    } else if (v < 0.6253) {
+        db = (0.6253 - v) * (1. / (0.6253 - 0.3747));
+        dg = 1.;
+        dr = (v - 0.3747) * (1. / (0.6253 - 0.3747));
+    } else if (v < 0.8758) {
+        db = 0.;
+        dr = 1.;
+        dg = (0.8758 - v) * (1. / (0.8758 - 0.6253));
+    } else {
+        db = 0.;
+        dg = 0.;
+        dr = 1. - (v - 0.8758) * ((1. - 0.504) / (1. - 0.8758));
+    }
+
+    r = (uint8_t) (255 * dr);
+    g = (uint8_t) (255 * dg);
+    b = (uint8_t) (255 * db);
+}
+
+void CalcVectQuation(const Eigen::Vector3d &x_vec, const Eigen::Vector3d &y_vec, const Eigen::Vector3d &z_vec,
+                     geometry_msgs::Quaternion &q) {
+    Eigen::Matrix3d rot;
+    rot << x_vec(0), x_vec(1), x_vec(2), y_vec(0), y_vec(1), y_vec(2), z_vec(0), z_vec(1), z_vec(2);
+    Eigen::Matrix3d rotation  = rot.transpose();
+    Eigen::Quaterniond eq(rotation);
+    q.w = eq.w();
+    q.x = eq.x();
+    q.y = eq.y();
+    q.z = eq.z();
+}
+
+void pubSinglePlane(visualization_msgs::MarkerArray &plane_pub, const std::string &plane_ns, const Plane &single_plane,
+                    const float alpha, const Eigen::Vector3d &rgb) {
+    visualization_msgs::Marker plane;
+    plane.header.frame_id = "camera_init";
+    plane.header.stamp = ros::Time();
+    plane.ns = plane_ns;
+    plane.id = single_plane.id;
+    plane.type = visualization_msgs::Marker::CYLINDER;
+    plane.action = visualization_msgs::Marker::ADD;
+    plane.pose.position.x = single_plane.center[0];
+    plane.pose.position.y = single_plane.center[1];
+    plane.pose.position.z = single_plane.center[2];
+    geometry_msgs::Quaternion q;
+    CalcVectQuation(single_plane.x_normal, single_plane.y_normal, single_plane.normal, q);
+    plane.pose.orientation = q;
+    plane.scale.x = 3 * sqrt(single_plane.max_eigen_value);
+    plane.scale.y = 3 * sqrt(single_plane.mid_eigen_value);
+    plane.scale.z = 2 * sqrt(single_plane.min_eigen_value);
+    plane.color.a = alpha;
+    plane.color.r = rgb(0);
+    plane.color.g = rgb(1);
+    plane.color.b = rgb(2);
+    plane.lifetime = ros::Duration();
+    plane_pub.markers.push_back(plane);
+}
+
+void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, const int pub_max_voxel_layer,
+                 const ros::Publisher &plane_map_pub) {
+    double max_trace = 0.25;
+    double pow_num = 0.2;
     ros::Rate loop(500);
+    float use_alpha = 0.8;
     visualization_msgs::MarkerArray voxel_plane;
     voxel_plane.markers.reserve(1000000);
     std::vector<Plane> pub_plane_list;
-    for (const auto & iter : voxel_map) {
-        GetUpdatePlane(iter.second, pub_max_voxel_layer, pub_plane_list);
+    for (const auto &iter: voxel_map) {
+        GetUpdatePlane(iter.second, pub_max_voxel_layer, pub_plane_list); // 得到pub_plane_list
     }
+    for (auto &p_list: pub_plane_list) {
+        faster_lio::V3D plane_cov = p_list.plane_cov.block<3, 3>(0, 0).diagonal();
+        double trace = plane_cov.sum();
+        if (trace >= max_trace) {
+            trace = max_trace;
+        }
+        trace = trace * (1.0 / max_trace);
+        trace = pow(trace, pow_num);
+        uint8_t r, g, b;
+        mapJet(trace, 0, 1, r, g, b);
+        Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
+        float alpha;
+        if (p_list.is_plane) {
+            alpha = use_alpha;
+        } else {
+            alpha = 0;
+        }
+        pubSinglePlane(voxel_plane, "plane", p_list, alpha, plane_rgb);
+    }
+    plane_map_pub.publish(voxel_plane);
+    loop.sleep();
 }
 
 
