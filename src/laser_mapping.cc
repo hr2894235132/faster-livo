@@ -11,6 +11,8 @@
 
 
 #define DEBUG_FILE_DIR(name)     (std::string(std::string(ROOT_DIR) + "Log/"+ name))
+#define USE_VOXEL_OCTREE
+#define CALIB_ANGLE_COV (0.01)
 
 inline void kitti_log(FILE *fp) {}
 
@@ -70,6 +72,7 @@ namespace faster_lio {
         int lidar_type, ivox_nearby_type;
         double gyr_cov, acc_cov, b_gyr_cov, b_acc_cov;
         double filter_size_surf_min, filter_size_corner_min = 0;
+        std::vector<int> layer_point_size;
 
         // TODO：12.1 hr 打印状态信息文件
         fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"), std::ios::out);
@@ -138,9 +141,23 @@ namespace faster_lio {
         nh.param<double>("ncc_thre", ncc_thre, 100);
 
 
-        // TODO:下面两个参数的含义? 貌似是新数据结构里用到的参数
+        // 新数据结构里用到的参数
         nh.param<float>("ivox_grid_resolution", ivox_options_.resolution_, 0.2);
         nh.param<int>("ivox_nearby_type", ivox_nearby_type, 18);
+
+        // TODO:0216 自适应体素结构参数 mapping algorithm params
+        nh.param<int>("mapping/max_points_size", max_points_size, 100);
+        nh.param<int>("mapping/max_cov_points_size", max_cov_points_size, 100);
+        nh.param<vector<int>>("mapping/layer_point_size", layer_point_size, vector<int>()); // TODO:0216原代码中使用double
+        nh.param<int>("mapping/max_layer", max_layer, 2);
+        nh.param<double>("mapping/voxel_size", max_voxel_size, 1.0);
+        nh.param<double>("mapping/down_sample_size", filter_size_surf_min, 0.5);
+        // std::cout << "filter_size_surf_min:" << filter_size_surf_min << std::endl;
+        nh.param<double>("mapping/plannar_threshold", min_eigen_value, 0.01);
+
+        for (double i : layer_point_size) {
+            layer_size.push_back(i);
+        }
 
         LOG(INFO) << "lidar_type " << lidar_type;
         if (lidar_type == 1) {
@@ -230,6 +247,10 @@ namespace faster_lio {
         cout << "debug:" << debug << " MIN_IMG_COUNT: " << MIN_IMG_COUNT << endl;
         pcl_wait_pub_->clear(); // world frame
 
+        // result params
+        nh.param<bool>("Result/write_kitti_log", write_kitti_log, 'false');
+        nh.param<string>("Result/result_path", result_path, "");
+
         // 订阅点云：根据雷达类型选择对应的点云回调函数（自定义类型：LivoxPCLCallBack；pcl标准点云类型：StandardPCLCallBack）
         if (preprocess_->GetLidarType() == LidarType::AVIA) {
             sub_pcl_ = nh.subscribe<livox_ros_driver::CustomMsg>(
@@ -263,6 +284,7 @@ namespace faster_lio {
         pubSubVisualCloud = nh.advertise<sensor_msgs::PointCloud2>("/cloud_visual_sub_map", 100);
         pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100);
         pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100);
+        publish_voxel_map = nh.advertise<visualization_msgs::MarkerArray>("/planes", 10000);
 
         // TODO：更新成livo pubLaserCloudFullRes
         pub_laser_cloud_world_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100);
@@ -311,7 +333,8 @@ namespace faster_lio {
         p_imu_->Process2(LidarMeasures_, state, scan_undistort_);
         auto undistort_end = std::chrono::high_resolution_clock::now();
         auto undistort_time =
-                std::chrono::duration_cast<std::chrono::duration<double>>(undistort_end - undistort_start).count() *
+                std::chrono::duration_cast<std::chrono::duration<
+                        double >>(undistort_end - undistort_start).count() *
                 1000;
         state_propagat = state;
 #endif
@@ -538,6 +561,9 @@ namespace faster_lio {
             for (int i = 0; i < 1; i++) {}
         }
 
+        /* lidar IEKF */
+        std::vector<M3D> body_var; // 存点的cov
+        std::vector<M3D> crossmat_list; // 存协方差矩阵
         Timer::Evaluate(
                 [&, this]() {
                     if (lidar_en) {
@@ -545,107 +571,194 @@ namespace faster_lio {
 //            for (size_t i = 0; i < index.size(); ++i) {
 //                index[i] = i;
 //            }
+                        // TODO:0214 加入计算雷达点的协方差的过程
+                        auto calc_point_cov_start = std::chrono::high_resolution_clock::now();
+                        for (auto &point: scan_down_body_->points) {
+                            V3D point_this(point.x, point.y, point.z);
+                            if (point_this[2] == 0) point_this[2] = 0.001;
+                            M3D cov;
+                            calcBodyCov(point_this, ranging_cov, angle_cov, cov);
+                            M3D point_crossmat;
+                            point_crossmat << SKEW_SYM_MATRIX(point_this);
+                            crossmat_list.push_back(point_crossmat);
+                            M3D rot_var = state.cov.block<3, 3>(0, 0);
+                            M3D t_var = state.cov.block<3, 3>(3, 3);
+                            body_var.push_back(cov);
+                        }
+                        auto calc_point_cov_end = std::chrono::high_resolution_clock::now();
+                        double calc_point_cov_time = std::chrono::duration_cast<std::chrono::duration<double >>(
+                                calc_point_cov_end -
+                                calc_point_cov_start).count() *
+                                                     1000; // 成员函数count(),用来表示这一段时间的长度
+
                         for (iterCount = -1; iterCount < options::NUM_MAX_ITERATIONS && flg_EKF_inited_; iterCount++) {
                             match_start = omp_get_wtime();
                             PointCloudType().swap(*laserCloudOri);
                             PointCloudType().swap(*corr_normvect);
+                            PointCloudType().swap(*laserCloudNoeffect);
                             total_residual_ = 0.0;
+
                             /** closest surface search and residual computation **/
+                            std::vector<double> r_list;
+                            std::vector<pTpl> ptpl_list;
+                            /** LiDAR match based on 3 sigma criterion **/
+                            vector<pointWithCov> pv_list;
+                            std::vector<M3D> var_list;
+//                            pcl::PointCloud<pcl::PointXYZI>::Ptr world_lidar_(new pcl::PointCloud<pcl::PointXYZI>);
+                            pcl::PointCloud<pcl::PointXYZI>::Ptr world_lidar_(new pcl::PointCloud<pcl::PointXYZI>);
+                            transformLidar(state, p_imu_, scan_down_body_, world_lidar_);
 #ifdef MP_EN
                             omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-//                std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i)
-                            for (int i = 0; i < cur_pts; i++) {
-                                PointType &point_body = scan_down_body_->points[i];
-                                PointType &point_world = scan_down_world_->points[i];
-                                V3D p_body(point_body.x, point_body.y, point_body.z);
-                                /* transform to world frame */
-                                PointBodyToWorld(&point_body, &point_world); // to world frame
-                                point_world.intensity = point_body.intensity;
-                                vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS); // #define 5
-                                auto &points_near = nearest_points_[i];
-//                    auto &points_near = pointSearchInd_surf[i];
-                                VF(4) pabcd;
-                                uint8_t search_flag = 0;
-                                double search_start = omp_get_wtime();
-                                if (nearest_search_en) {
-                                    /** Find the closest surfaces in the map **/
-                                    // 使用ivox_获取地图坐标系中与point_world最近的5个点（N=options::NUM_MATCH_POINTS 5）
-                                    ivox_->GetClosestPoint(point_world, points_near, options::NUM_MATCH_POINTS);
-                                    // 设置标志位，表明是否找到足够的接近点(3个)
-                                    point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
-                                    // 判断近邻点是否形成平面（找到最近的点>=5个，说明可以形成平面），平面法向量存储于plane_coef[i](pabcd)
-                                    if (point_selected_surf_[i]) {
-                                        // 平面拟合并且获取对应的单位平面法向量plane_coef[i](4*1)
-//                            point_selected_surf_[i] =
-//                                    esti_plane(plane_coef_[i], points_near, options::ESTI_PLANE_THRESHOLD);
-                                        point_selected_surf_[i] =
-                                                esti_plane(pabcd, points_near, options::ESTI_PLANE_THRESHOLD);
-                                        // ESTI_PLANE_THRESHOLD:0.1
-                                    }
-                                }
-                                if (!point_selected_surf_[i] || points_near.size() < options::NUM_MATCH_POINTS)
-                                    continue;
-                                // 如果近邻点可以形成平面，则计算point-plane距离残差 esti_plane(pabcd, points_near, 0.1f)
-                                if (point_selected_surf_[i]) {
-//                        auto temp = point_world.getVector4fMap();
-//                        temp[3] = 1.0;
-//                        float pd2 = plane_coef_[i].dot(temp); // 点到面距离 (|AB|*n)/|n|
-                                    float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
-                                                pabcd(2) * point_world.z +
-                                                pabcd(3);
-                                    bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
-                                    if (valid_corr) {
-                                        point_selected_surf_[i] = true;
-                                        normvec->points[i].x = pabcd(0); // hr: save normvec
-                                        normvec->points[i].y = pabcd(1);
-                                        normvec->points[i].z = pabcd(2);
-                                        normvec->points[i].intensity = pd2;
-                                        residuals_[i] = pd2; // 更新残差
-                                    }
-                                }
-                            }
-                            effect_feat_num_ = 0;
-//                corr_pts_.resize(cur_pts); // 存点坐标及对应的残差
-//                corr_norm_.resize(cur_pts); // 存平面单位法向量
-                            laserCloudOri->resize(cur_pts);
-                            corr_normvect->reserve(cur_pts);
-                            for (int i = 0; i < cur_pts; i++) {
-                                // todo 新增残差 <= 2.0约束
-                                if (point_selected_surf_[i] && (residuals_[i] <= 2.0)) {
-                                    laserCloudOri->points[effect_feat_num_] = scan_down_body_->points[i];
-                                    corr_normvect->points[effect_feat_num_] = normvec->points[i];
-//                        corr_norm_[effect_feat_num_] = plane_coef_[i];
-//                        corr_pts_[effect_feat_num_] = scan_down_body_->points[i].getVector4fMap();
-//                        corr_pts_[effect_feat_num_][3] = residuals_[i];
-                                    total_residual_ += residuals_[i];
-                                    effect_feat_num_++; // 记录有效点（特征点）的数量（Effective Points）
-                                }
-                            }
-//                corr_pts_.resize(effect_feat_num_);
-//                corr_norm_.resize(effect_feat_num_);
+#ifndef USE_VOXEL_OCTREE
+                            //                std::for_each(std::execution::par_unseq, index.begin(), index.end(), [&](const size_t &i)
+                                                        for (int i = 0; i < cur_pts; i++) {
+                                                            PointType &point_body = scan_down_body_->points[i];
+                                                            PointType &point_world = scan_down_world_->points[i];
+                                                            V3D p_body(point_body.x, point_body.y, point_body.z);
+                                                            /* transform to world frame */
+                                                            PointBodyToWorld(&point_body, &point_world); // to world frame
+                                                            point_world.intensity = point_body.intensity;
+                                                            vector<float> pointSearchSqDis(options::NUM_MATCH_POINTS); // #define 5
+                                                            auto &points_near = nearest_points_[i];
+                            //                    auto &points_near = pointSearchInd_surf[i];
+                                                            VF(4) pabcd;
+                                                            uint8_t search_flag = 0;
+                                                            double search_start = omp_get_wtime();
+                                                            if (nearest_search_en) {
+                                                                /** Find the closest surfaces in the map **/
+                                                                // 使用ivox_获取地图坐标系中与point_world最近的5个点（N=options::NUM_MATCH_POINTS 5）
+                                                                ivox_->GetClosestPoint(point_world, points_near, options::NUM_MATCH_POINTS);
+                                                                // 设置标志位，表明是否找到足够的接近点(3个)
+                                                                point_selected_surf_[i] = points_near.size() >= options::MIN_NUM_MATCH_POINTS;
+                                                                // 判断近邻点是否形成平面（找到最近的点>=5个，说明可以形成平面），平面法向量存储于plane_coef[i](pabcd)
+                                                                if (point_selected_surf_[i]) {
+                                                                    // 平面拟合并且获取对应的单位平面法向量plane_coef[i](4*1)
+                            //                            point_selected_surf_[i] =
+                            //                                    esti_plane(plane_coef_[i], points_near, options::ESTI_PLANE_THRESHOLD);
+                                                                    point_selected_surf_[i] =
+                                                                            esti_plane(pabcd, points_near, options::ESTI_PLANE_THRESHOLD);
+                                                                    // ESTI_PLANE_THRESHOLD:0.1
+                                                                }
+                                                            }
+                                                            if (!point_selected_surf_[i] || points_near.size() < options::NUM_MATCH_POINTS)
+                                                                continue;
+                                                            // 如果近邻点可以形成平面，则计算point-plane距离残差 esti_plane(pabcd, points_near, 0.1f)
+                                                            if (point_selected_surf_[i]) {
+                            //                        auto temp = point_world.getVector4fMap();
+                            //                        temp[3] = 1.0;
+                            //                        float pd2 = plane_coef_[i].dot(temp); // 点到面距离 (|AB|*n)/|n|
+                                                                float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
+                                                                            pabcd(2) * point_world.z +
+                                                                            pabcd(3);
+                                                                bool valid_corr = p_body.norm() > 81 * pd2 * pd2;
+                                                                if (valid_corr) {
+                                                                    point_selected_surf_[i] = true;
+                                                                    normvec->points[i].x = pabcd(0); // hr: save normvec
+                                                                    normvec->points[i].y = pabcd(1);
+                                                                    normvec->points[i].z = pabcd(2);
+                                                                    normvec->points[i].intensity = pd2;
+                                                                    residuals_[i] = pd2; // 更新残差
+                                                                }
+                                                            }
+                                                        }
+                                                        effect_feat_num_ = 0;
+                            //                corr_pts_.resize(cur_pts); // 存点坐标及对应的残差
+                            //                corr_norm_.resize(cur_pts); // 存平面单位法向量
+                                                        laserCloudOri->resize(cur_pts);
+                                                        corr_normvect->reserve(cur_pts);
+                                                        for (int i = 0; i < cur_pts; i++) {
+                                                            // todo 新增残差 <= 2.0约束
+                                                            if (point_selected_surf_[i] && (residuals_[i] <= 2.0)) {
+                                                                laserCloudOri->points[effect_feat_num_] = scan_down_body_->points[i];
+                                                                corr_normvect->points[effect_feat_num_] = normvec->points[i];
+                            //                        corr_norm_[effect_feat_num_] = plane_coef_[i];
+                            //                        corr_pts_[effect_feat_num_] = scan_down_body_->points[i].getVector4fMap();
+                            //                        corr_pts_[effect_feat_num_][3] = residuals_[i];
+                                                                total_residual_ += residuals_[i];
+                                                                effect_feat_num_++; // 记录有效点（特征点）的数量（Effective Points）
+                                                            }
+                                                        }
+                            //                corr_pts_.resize(effect_feat_num_);
+                            //                corr_norm_.resize(effect_feat_num_);
 
-                            res_mean_last = total_residual_ / effect_feat_num_;
-                            if (effect_feat_num_ < 1) {
-                                LOG(WARNING) << "No Effective Points!";
-                                continue; // todo :return? or continue or break
+                                                        res_mean_last = total_residual_ / effect_feat_num_;
+                                                        if (effect_feat_num_ < 1) {
+                                                            LOG(WARNING) << "No Effective Points!";
+                                                            continue; // todo :return? or continue or break
+                                                        }
+                                                        // debug:
+                                                        cout << "[ mapping ]: Effective feature num: " << effect_feat_num_ << " res_mean_last "
+                                                             << res_mean_last
+                                                             << endl;
+                            //                printf("[ LIO ]: time: fov_check and readd: %0.6f match: %0.6f solve: %0.6f  "
+                            //                       "ICP: %0.6f  map incre: %0.6f total: %0.6f icp: %0.6f construct H: %0.6f.\n",
+                            //                       t1 - t0, aver_time_match, aver_time_solve, t3 - t2, t5 - t3, aver_time_consu,
+                            //                       aver_time_icp, aver_time_const_H_time);
+                                                        match_time += omp_get_wtime() - match_start; // 匹配结束
+
+#else
+                            /* 更新pv_list(pv),var_list(cov) */
+                            for (size_t i = 0; i < scan_down_body_->points.size(); ++i) {
+                                pointWithCov pv;
+                                pv.point << scan_down_body_->points[i].x, scan_down_body_->points[i].y,
+                                        scan_down_body_->points[i].z;
+                                pv.point_world << world_lidar_->points[i].x, world_lidar_->points[i].y,
+                                        world_lidar_->points[i].z;
+                                M3D cov = body_var[i];
+                                M3D point_crossmat = crossmat_list[i];
+                                M3D rot_var = state.cov.block<3, 3>(0, 0);
+                                M3D t_var = state.cov.block<3, 3>(3, 3);
+                                cov = state.rot_end * cov * state.rot_end.transpose() +
+                                      state.rot_end * (-point_crossmat) * rot_var * (-point_crossmat.transpose()) *
+                                      state.rot_end.transpose() + t_var; // 公式3
+                                pv.cov = cov;
+                                pv_list.push_back(pv);
+                                var_list.push_back(cov);
                             }
-                            // debug:
-                            cout << "[ mapping ]: Effective feature num: " << effect_feat_num_ << " res_mean_last "
-                                 << res_mean_last
-                                 << endl;
-//                printf("[ LIO ]: time: fov_check and readd: %0.6f match: %0.6f solve: %0.6f  "
-//                       "ICP: %0.6f  map incre: %0.6f total: %0.6f icp: %0.6f construct H: %0.6f.\n",
-//                       t1 - t0, aver_time_match, aver_time_solve, t3 - t2, t5 - t3, aver_time_consu,
-//                       aver_time_icp, aver_time_const_H_time);
-                            match_time += omp_get_wtime() - match_start; // 匹配结束
-                            solve_start = omp_get_wtime(); // 迭代求解开始
+                            /* point-to-plane匹配 */
+                            auto scan_match_time_start = std::chrono::high_resolution_clock::now();
+                            std::vector<V3D> non_match_list;
+                            BuildResidualListOMP(voxel_map, max_voxel_size, 3.0, max_layer, pv_list, ptpl_list,
+                                                 non_match_list);
+                            auto scan_match_time_end = std::chrono::high_resolution_clock::now();
+
+                            effect_feat_num_ = 0;
+                            for (int i = 0; i < ptpl_list.size(); ++i) {
+                                PointType pi_body;
+                                PointType pi_world;
+                                PointType pl;
+                                pi_body.x = ptpl_list[i].point(0);
+                                pi_body.y = ptpl_list[i].point(1);
+                                pi_body.z = ptpl_list[i].point(2);
+                                PointBodyToWorld(&pi_body, &pi_world);
+                                // pl: 平面法向量
+                                pl.x = ptpl_list[i].normal(0);
+                                pl.y = ptpl_list[i].normal(1);
+                                pl.z = ptpl_list[i].normal(2);
+                                effect_feat_num_++;
+                                float dis = (pi_world.x * pl.x + pi_world.y * pl.y + pi_world.z * pl.z +
+                                             ptpl_list[i].d); // 公式9
+                                pl.intensity = dis;
+                                laserCloudOri->push_back(pi_body);
+                                corr_normvect->push_back(pl);
+                                total_residual_ += fabs(dis);
+                            }
+                            res_mean_last = total_residual_ / effect_feat_num_;
+                            match_time += std::chrono::duration_cast<std::chrono::duration<double >>(
+                                    scan_match_time_end - scan_match_time_start).count() * 1000;
+#endif
+//                            solve_start = omp_get_wtime(); // 迭代求解开始
+                            auto solve_start = std::chrono::high_resolution_clock::now();
 
                             /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
+                            // TODO: 0215更新IESKF迭代求解过程 在迭代过程中引入平面和点的不确定性
                             MatrixXd H_x(effect_feat_num_, 12);
                             MatrixXd Hsub(effect_feat_num_, 6); // note: 其他列为0
                             VectorXd meas_vec(effect_feat_num_);
+                            VectorXd R_inv(effect_feat_num_);
+                            MatrixXd Hsub_T_R_inv(6, effect_feat_num_);
 
                             // 取状态中的外参
                             const M3F off_R = state.rot_end.cast<float>();
@@ -653,25 +766,55 @@ namespace faster_lio {
                             for (int i = 0; i < effect_feat_num_; i++) {
                                 const PointType &laser_p = laserCloudOri->points[i];
                                 V3D point_this(laser_p.x, laser_p.y, laser_p.z);
-                                point_this += lidar_T_wrt_IMU; // TODO： NOTE：配置参数中雷达和imu的相对旋转为单位阵
+                                M3D cov;
+                                if (calib_laser) {
+                                    calcBodyCov(point_this, ranging_cov, CALIB_ANGLE_COV, cov);
+                                } else {
+                                    calcBodyCov(point_this, ranging_cov, angle_cov, cov);
+                                }
+                                cov = state.rot_end * cov * state.rot_end.transpose();
+
+                                point_this += lidar_T_wrt_IMU; // NOTE：配置参数中雷达和imu的相对旋转为单位阵
                                 M3D point_crossmat;
                                 point_crossmat << SKEW_SYM_MATRIX(point_this); // 斜对称矩阵
                                 /*** get the normal vector of closest surface/corner ***/
                                 const PointType &norm_p = corr_normvect->points[i];
                                 V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+                                V3D point_world = state.rot_end * point_this + state.pos_end;
+                                Eigen::Matrix<double, 1, 6> J_nq;
+                                J_nq.block<1, 3>(0, 0) = point_world - ptpl_list[i].center; // 论文中公式(13)
+                                J_nq.block<1, 3>(0, 3) = -ptpl_list[i].normal;
+                                double sigma_l = J_nq * ptpl_list[i].plane_cov * J_nq.transpose(); // 公式(11) 噪声部分
+                                R_inv(i) = 1.0 / (sigma_l + norm_vec.transpose() * cov * norm_vec);
+                                double ranging_dis = point_this.norm();
+                                // TODO: 公式？？？ 更新引入点的噪声模型的一些点的属性信息
+                                laserCloudOri->points[i].intensity = sqrt(R_inv(i));
+                                // 表示给定点所在样本曲面上的法线方向
+                                laserCloudOri->points[i].normal_x = corr_normvect->points[i].intensity; // point-to-plane dist
+                                laserCloudOri->points[i].normal_y = sqrt(sigma_l);
+                                laserCloudOri->points[i].normal_z = sqrt(norm_vec.transpose() * cov * norm_vec);
+                                // 曲率值
+                                laserCloudOri->points[i].curvature = sqrt(
+                                        sigma_l + norm_vec.transpose() * cov * norm_vec);
+
                                 /*** calculate the Measuremnt Jacobian matrix H ***/
                                 V3D A(point_crossmat * state.rot_end.transpose() * norm_vec); // 公式(50)
-                                Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z;
+                                Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z; // H矩阵 公式(50)
+                                Hsub_T_R_inv.col(i) << A[0] * R_inv(i), A[1] * R_inv(i),
+                                        A[2] * R_inv(i), norm_p.x * R_inv(i), norm_p.y * R_inv(i),
+                                        norm_p.z * R_inv(i); //TODO:新公式 引入平面概率模型后的Hsub_T
 
                                 /*** Measuremnt: distance to the closest surface/corner ***/
                                 meas_vec(i) = -norm_p.intensity;
                             }
-                            solve_const_H_time += omp_get_wtime() - solve_start;
+                            // TODO: 更新时间
+//                            solve_const_H_time += omp_get_wtime() - solve_start;
 
                             MatrixXd K(DIM_STATE, effect_feat_num_);
 
                             EKF_stop_flg_ = false;
                             flg_EKF_converged_ = false;
+
                             /*** Iterative Kalman Filter Update ***/
                             if (!flg_EKF_inited_) {
                                 cout << "||||||||||Initiallizing LiDar||||||||||" << endl;
@@ -684,25 +827,30 @@ namespace faster_lio {
                                 z_init.block<3, 1>(0, 0) = -Log(state.rot_end);
                                 z_init.block<3, 1>(0, 0) = -state.pos_end;
                                 auto H_init_T = H_init.transpose();
-                                auto &&K_init = state.cov * H_init_T *
-                                                (H_init * state.cov * H_init_T +
-                                                 0.0001 * MD(9, 9)::Identity()).inverse();
+                                auto &&K_init = state.cov * H_init_T * (H_init * state.cov * H_init_T +
+                                                                        0.0001 *
+                                                                        MD(9, 9)::Identity()).inverse(); // 公式(54)初始化
                                 solution = K_init * z_init;
                                 state.resetpose(); // R：单位阵；p,v:Zero3d
                                 EKF_stop_flg_ = true;
                             } else {
                                 auto &&Hsub_T = Hsub.transpose();
                                 auto &&HTz = Hsub_T * meas_vec;
-                                H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
+//                                H_T_H.block<6, 6>(0, 0) = Hsub_T * Hsub;
+                                H_T_H.block<6, 6>(0, 0) = Hsub_T_R_inv * Hsub;
                                 MD(DIM_STATE, DIM_STATE) &&K_1 = (H_T_H + (state.cov /
                                                                            LASER_POINT_COV).inverse()).inverse(); // 新卡尔曼增益公式前半部分
-                                G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
+//                                G.block<DIM_STATE, 6>(0, 0) = K_1.block<DIM_STATE, 6>(0, 0) * H_T_H.block<6, 6>(0, 0);
+                                K = K_1.block<DIM_STATE, 6>(0, 0) * Hsub_T_R_inv;
                                 auto vec = state_propagat - state; // error
-                                solution = K_1.block<DIM_STATE, 6>(0, 0) * HTz + vec -
-                                           G.block<DIM_STATE, 6>(0, 0) * vec.block<6, 1>(0, 0); // 公式(65)
+//                                solution = K_1.block<DIM_STATE, 6>(0, 0) * HTz + vec -
+//                                           G.block<DIM_STATE, 6>(0, 0) * vec.block<6, 1>(0, 0); // 公式(65)
+                                solution = K * meas_vec + vec - K * Hsub * vec.block<6, 1>(0, 0);
+
                                 if (0)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
                                 {
-                                    VD(6) V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
+                                    VD(6)
+                                            V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
                                     cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
                                     EKF_stop_flg_ = true;
                                     solution.block<6, 1>(9, 0).setZero();
@@ -733,8 +881,8 @@ namespace faster_lio {
                                 (rematch_num >= 2 || (iterCount == options::NUM_MAX_ITERATIONS - 1))) {
                                 if (flg_EKF_inited_) {
                                     /*** Covariance Update ***/
-                                    // G.setZero();
-                                    // G.block<DIM_STATE,6>(0,0) = K * Hsub;
+                                    G.setZero();
+                                    G.block<DIM_STATE, 6>(0, 0) = K * Hsub;
                                     state.cov = (I_STATE - G) * state.cov;
                                     total_distance_ += (state.pos_end - position_last_).norm();
                                     position_last_ = state.pos_end;
@@ -749,7 +897,13 @@ namespace faster_lio {
                                 }
                                 EKF_stop_flg_ = true;
                             }
-                            solve_time += omp_get_wtime() - solve_start;
+                            // TODO: 更新时间
+//                            solve_time += omp_get_wtime() - solve_start;
+                            auto solve_end = std::chrono::high_resolution_clock::now();
+                            solve_time += std::chrono::duration_cast<std::chrono::duration<double>>(
+                                    solve_end - solve_start)
+                                                  .count() *
+                                          1000;
 
                             if (EKF_stop_flg_) break;
                         }
@@ -768,13 +922,41 @@ namespace faster_lio {
             geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur_(0), euler_cur_(1), euler_cur_(2));
             PublishOdometry(pub_odom_aft_mapped_);
         }
+#ifndef USE_VOXEL_OCTREE
         /* update local map */
         t3 = omp_get_wtime();
         Timer::Evaluate([&, this]() { MapIncremental(); }, "    Incremental Mapping");
         t5 = omp_get_wtime();
-
         LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " downsamp " << cur_pts
                   << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_num_;
+#else
+        /*** add the  points to the voxel map ***/
+        auto map_incremental_start = std::chrono::high_resolution_clock::now();
+        Timer::Evaluate([&, this]() {
+            pcl::PointCloud<pcl::PointXYZI>::Ptr world_lidar(new pcl::PointCloud<pcl::PointXYZI>);
+            transformLidar(state, p_imu_, scan_down_body_, world_lidar);
+            std::vector<pointWithCov> pv_list;
+            for (size_t i = 0; i < world_lidar->size(); ++i) {
+                pointWithCov pv;
+                pv.point << world_lidar->points[i].x, world_lidar->points[i].y, world_lidar->points[i].z;
+                M3D point_crossmat = crossmat_list[i];
+                M3D cov = body_var[i];
+                cov = state.rot_end * cov * state.rot_end.transpose() +
+                      state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) * (-point_crossmat.transpose()) *
+                      state.rot_end.transpose() + state.cov.block<3, 3>(3, 3); // 公式3
+                pv.cov = cov;
+                pv_list.push_back(pv);
+            }
+            // var_contrast:return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
+            std::sort(pv_list.begin(), pv_list.end(), var_contrast);
+            updateVoxelMap(pv_list, max_voxel_size, max_layer, layer_size, max_points_size, max_points_size,
+                           min_eigen_value, voxel_map);
+        }, "    Incremental Mapping");
+
+        auto map_incremental_end = std::chrono::high_resolution_clock::now();
+        map_incremental_time = std::chrono::duration_cast<std::chrono::duration<double>>(
+                map_incremental_end - map_incremental_start).count() * 1000;
+#endif
 
         // publish or save map pcd
         if (path_pub_en_ || path_save_en_) {
@@ -797,6 +979,9 @@ namespace faster_lio {
         }
         if (scan_pub_en_ && scan_effect_pub_en_) {
             PublishFrameEffectWorld(pub_laser_cloud_effect_world_);
+        }
+        if (publish_voxel_map){
+            pubVoxelMap(voxel_map, publish_max_voxel_layer, voxel_map_pub);
         }
         // publish_visual_world_map(pubVisualCloud);
         // publish_map(pubLaserCloudMap);

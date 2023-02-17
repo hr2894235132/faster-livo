@@ -100,6 +100,9 @@ namespace faster_lio {
         void Savetrajectory(const std::string &traj_file);
 
         void Finish();
+        static bool var_contrast(pointWithCov &x, pointWithCov &y){
+            return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
+        }
 
     private:
         template<typename T>
@@ -187,6 +190,7 @@ namespace faster_lio {
         VV4F corr_pts_;                           // inlier pts
         VV4F corr_norm_;                          // inlier plane norms
         PointCloudType::Ptr laserCloudOri{new PointCloudType()};
+        PointCloudType::Ptr laserCloudNoeffect{new PointCloudType()};
         PointCloudType::Ptr corr_normvect{new PointCloudType()};
         pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
         pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -215,6 +219,8 @@ namespace faster_lio {
         ros::Publisher pubSubVisualCloud;
         ros::Publisher pubLaserCloudEffect;
         ros::Publisher pubLaserCloudMap;
+        ros::Publisher voxel_map_pub;
+
 
         std::mutex mtx_buffer_;
         condition_variable sig_buffer_;
@@ -319,6 +325,11 @@ namespace faster_lio {
         double sigma_num = 2.0;
         double max_voxel_size = 1.0;
         std::vector<int> layer_size;
+
+        bool calib_laser = false;
+        double map_incremental_time;
+
+        std::string result_path = "";
 
     };
 
