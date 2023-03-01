@@ -16,6 +16,7 @@
 #include <pcl/common/io.h>
 #include <rosbag/bag.h>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -52,7 +53,7 @@ typedef struct Plane {
     Eigen::Vector3d x_normal;
     Eigen::Matrix3d covariance;
     Eigen::Matrix<double, 6, 6> plane_cov;
-    float radius;
+    float radius = 0;
     float min_eigen_value = 1;
     float mid_eigen_value = 1;
     float max_eigen_value = 1;
@@ -122,7 +123,7 @@ public:
     OctoTree(int max_layer, int layer, std::vector<int> layer_point_size,
              int max_point_size, int max_cov_points_size, float planer_threshold)
             : max_layer_(max_layer), layer_(layer),
-              layer_point_size_(std::move(layer_point_size)), max_points_size_(max_point_size),
+              layer_point_size_(layer_point_size), max_points_size_(max_point_size),
               max_cov_points_size_(max_cov_points_size),
               planer_threshold_(planer_threshold) {
         temp_points_.clear();
@@ -176,6 +177,8 @@ public:
         Eigen::Matrix3d J_Q;
         J_Q << 1.0 / plane->points_size, 0, 0, 0, 1.0 / plane->points_size, 0, 0, 0, 1.0 / plane->points_size; // 公式7
         if (evalsReal(evalsMin) < planer_threshold_) {
+            std::vector<int> index(points.size());
+            std::vector<Eigen::Matrix<double, 6, 6>> temp_matrix(points.size());
             // TODO: 0213修改range循环格式
             for (const auto &point: points) {
                 Eigen::Matrix<double, 6, 3> J;
@@ -490,13 +493,16 @@ public:
 };
 
 void transformLidar(const faster_lio::StatesGroup &state, const shared_ptr<faster_lio::ImuProcess> &p_imu,
-                    const PointCloudType::Ptr &input_cloud, pcl::PointCloud<pcl::PointXYZI>::Ptr &trans_cloud) {
+                    const PointCloudType::Ptr &input_cloud, pcl::PointCloud<pcl::PointXYZINormal>::Ptr &trans_cloud) {
     trans_cloud->clear();
     for (size_t i = 0; i < input_cloud->size(); i++) {
         PointType p_c = input_cloud->points[i];
         Eigen::Vector3d p(p_c.x, p_c.y, p_c.z);
+        // TODO:0301先转换为imu系
+        p = p_imu->Lidar_R_wrt_IMU_ * p + p_imu->Lidar_T_wrt_IMU_;
+
         p = state.rot_end * p + state.pos_end;
-        pcl::PointXYZI pi;
+        pcl::PointXYZINormal pi;
         pi.x = p[0];
         pi.y = p[1];
         pi.z = p[2];
@@ -548,11 +554,14 @@ void buildVoxelMap(const std::vector<pointWithCov> &input_points, const float vo
         auto iter = feat_map.find(position);
         // 对于一个新增的点，首先计算索引key，查找此 key 是否已经存在,若存在，则向对应体素里新增点；若不存在，则先创建新OctoTree再插入点
         if (iter != feat_map.end()) {
+            cout << "build map: find it !!!!!!!!" << endl;
             feat_map[position]->temp_points_.push_back(p_v);
             feat_map[position]->new_points_num_++;
         } else {
+            cout << "bbbbbbbbbbbbb" << endl;
             auto *octoTree = new OctoTree(max_layer, 0, layer_point_size, max_points_size, max_cov_points_size,
                                           planer_threshold);
+            cout << "aaaaaaaaaaaaaa" << endl;
             feat_map[position] = octoTree;
             feat_map[position]->quater_length_ = voxel_size / 4;
             feat_map[position]->voxel_center_[0] =
@@ -579,24 +588,38 @@ void updateVoxelMap(const std::vector<pointWithCov> &input_points, const float v
         float loc_xyz[3];
         for (int j = 0; j < 3; ++j) {
             loc_xyz[j] = p_v.point[j] / voxel_size;
+//            cout << loc_xyz[j] << " " << endl;
             if (loc_xyz[j] < 0) loc_xyz[j] -= 1.0;
         }
         VOXEL_LOC position((int64_t) loc_xyz[0], (int64_t) loc_xyz[1], (int64_t) loc_xyz[2]);
         auto iter = feat_map.find(position);
         if (iter != feat_map.end()) {
+//            cout << "kkkkkkkkkkkkkkkk" << endl;
             /* when the new points are added to an existing voxel, the parameters and the uncertainty of the plane
              * in the voxel should be updated */
             feat_map[position]->UpdateOctoTree(p_v);
+//            cout << "jjjjjjjjjjjjj" << endl;
         } else {
+//            cout << "fffffffffff" << endl;
             /* When the new points lie in an unpopulated voxel, it will construct the voxel */
             OctoTree *octo_tree = new OctoTree(max_layer, 0, layer_point_size, max_points_size, max_cov_points_size,
                                                planer_threshold);
+//            std::shared_ptr<OctoTree> octo_tree = std::make_shared<OctoTree>(max_layer, 0, layer_point_size,
+//                                                                          max_points_size, max_cov_points_size,
+//                                                                          planer_threshold);
+//            cout << "ggggggggggg" << endl;
             feat_map[position] = octo_tree;
+//            cout << "gggggggggggg" << endl;
             feat_map[position]->quater_length_ = voxel_size / 4;
+//            cout << "ggggggggggggg" << endl;
             feat_map[position]->voxel_center_[0] = (0.5 + position.x) * voxel_size;
+//            cout << "gggggggggggggg" << endl;
             feat_map[position]->voxel_center_[1] = (0.5 + position.y) * voxel_size;
+//            cout << "ggggggggggggggg" << endl;
             feat_map[position]->voxel_center_[2] = (0.5 + position.z) * voxel_size;
+//            cout << "gggggggggggggggg" << endl;
             feat_map[position]->UpdateOctoTree(p_v);
+//            cout << "hhhhhhhhhhhhhhhh" << endl;
         }
     }
 }
@@ -668,6 +691,7 @@ void BuildResidualListOMP(const unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
                           std::vector<pTpl> &ptpl_list, std::vector<Eigen::Vector3d> &non_match) {
     std::mutex mylock;
     ptpl_list.clear();
+    cout << "size!!!!" << pv_list.size() << endl;
     std::vector<pTpl> all_ptpl_list(pv_list.size());
     std::vector<bool> useful_ptpl(pv_list.size());
     std::vector<size_t> index(pv_list.size());
@@ -803,7 +827,7 @@ void CalcVectQuation(const Eigen::Vector3d &x_vec, const Eigen::Vector3d &y_vec,
                      geometry_msgs::Quaternion &q) {
     Eigen::Matrix3d rot;
     rot << x_vec(0), x_vec(1), x_vec(2), y_vec(0), y_vec(1), y_vec(2), z_vec(0), z_vec(1), z_vec(2);
-    Eigen::Matrix3d rotation  = rot.transpose();
+    Eigen::Matrix3d rotation = rot.transpose();
     Eigen::Quaterniond eq(rotation);
     q.w = eq.w();
     q.x = eq.x();

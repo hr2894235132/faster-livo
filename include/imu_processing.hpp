@@ -71,6 +71,9 @@ namespace faster_lio {
         V3D cov_bias_gyr_;
         V3D cov_bias_acc_;
         double first_lidar_time;
+        // 雷达imu外参
+        M3D Lidar_R_wrt_IMU_;
+        V3D Lidar_T_wrt_IMU_;
 
     private:
 #ifdef USE_IKFOM
@@ -93,8 +96,6 @@ namespace faster_lio {
         std::deque<sensor_msgs::ImuConstPtr> v_imu_;
         std::vector<Pose6D> IMUpose_;
         std::vector<M3D> v_rot_pcl_;
-        M3D Lidar_R_wrt_IMU_;
-        V3D Lidar_T_wrt_IMU_;
         V3D mean_acc_;
         V3D mean_gyr_;
         V3D angvel_last_;
