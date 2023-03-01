@@ -896,5 +896,168 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
     loop.sleep();
 }
 
+void pubPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
+                 const ros::Publisher &plane_map_pub) {
+    OctoTree *current_octo = nullptr;
+
+    double max_trace = 0.25;
+    double pow_num = 0.2;
+    ros::Rate loop(500);
+    float use_alpha = 1.0;
+    visualization_msgs::MarkerArray voxel_plane; // visualization_msgs::MarkerArray:在rviz中的指定位置显示文字信息并实时更新
+    voxel_plane.markers.reserve(1000000);
+
+    for (const auto & iter : feat_map) {
+        if (iter.second->plane_ptr_->is_update) {
+            Eigen::Vector3d normal_rgb(0.0, 1.0, 0.0);
+
+            faster_lio::V3D plane_cov =
+                    iter.second->plane_ptr_->plane_cov.block<3, 3>(0, 0).diagonal();
+            double trace = plane_cov.sum();
+            if (trace >= max_trace) {
+                trace = max_trace;
+            }
+            trace = trace * (1.0 / max_trace);
+            trace = pow(trace, pow_num);
+            uint8_t r, g, b;
+            mapJet(trace, 0, 1, r, g, b);
+            Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
+            // Eigen::Vector3d plane_rgb(1, 0, 0);
+            float alpha = 0.0;
+            if (iter.second->plane_ptr_->is_plane) {
+                alpha = use_alpha;
+            } else {
+                // std::cout << "delete plane" << std::endl;
+            }
+            // if (iter->second->update_enable_) {
+            //   plane_rgb << 1, 0, 0;
+            // } else {
+            //   plane_rgb << 0, 0, 1;
+            // }
+            pubSinglePlane(voxel_plane, "plane", *(iter.second->plane_ptr_), alpha,
+                           plane_rgb);
+
+            iter.second->plane_ptr_->is_update = false;
+        } else {
+            for (auto & leave : iter.second->leaves_) {
+                if (leave != nullptr) {
+                    if (leave->plane_ptr_->is_update) {
+                        Eigen::Vector3d normal_rgb(0.0, 1.0, 0.0);
+
+                        faster_lio::V3D plane_cov = leave
+                                ->plane_ptr_->plane_cov.block<3, 3>(0, 0)
+                                .diagonal();
+                        double trace = plane_cov.sum();
+                        if (trace >= max_trace) {
+                            trace = max_trace;
+                        }
+                        trace = trace * (1.0 / max_trace);
+                        // trace = (max_trace - trace) / max_trace;
+                        trace = pow(trace, pow_num);
+                        uint8_t r, g, b;
+                        mapJet(trace, 0, 1, r, g, b);
+                        Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
+                        plane_rgb << 0, 1, 0;
+                        // fabs(iter->second->leaves_[i]->plane_ptr_->normal[0]),
+                        //     fabs(iter->second->leaves_[i]->plane_ptr_->normal[1]),
+                        //     fabs(iter->second->leaves_[i]->plane_ptr_->normal[2]);
+                        float alpha = 0.0;
+                        if (leave->plane_ptr_->is_plane) {
+                            alpha = use_alpha;
+                        } else {
+                            // std::cout << "delete plane" << std::endl;
+                        }
+                        pubSinglePlane(voxel_plane, "plane",
+                                       *(leave->plane_ptr_), alpha,
+                                       plane_rgb);
+                        // loop.sleep();
+                        leave->plane_ptr_->is_update = false;
+                        // loop.sleep();
+                    } else {
+                        OctoTree *temp_octo_tree = leave;
+                        for (auto & leaves : temp_octo_tree->leaves_) {
+                            if (leaves != nullptr) {
+                                if (leaves->octo_state_ == 0 &&
+                                    leaves->plane_ptr_->is_update) {
+                                    if (leaves->plane_ptr_->is_plane) {
+                                        // std::cout << "subsubplane" << std::endl;
+                                        Eigen::Vector3d normal_rgb(0.0, 1.0, 0.0);
+                                        faster_lio::V3D plane_cov =
+                                                leaves
+                                                        ->plane_ptr_->plane_cov.block<3, 3>(0, 0)
+                                                        .diagonal();
+                                        double trace = plane_cov.sum();
+                                        if (trace >= max_trace) {
+                                            trace = max_trace;
+                                        }
+                                        trace = trace * (1.0 / max_trace);
+                                        // trace = (max_trace - trace) / max_trace;
+                                        trace = pow(trace, pow_num);
+                                        uint8_t r, g, b;
+                                        mapJet(trace, 0, 1, r, g, b);
+                                        Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
+                                        plane_rgb << 0, 0, 1;
+                                        float alpha = 0.0;
+                                        if (leaves->plane_ptr_->is_plane) {
+                                            alpha = use_alpha;
+                                        }
+
+                                        pubSinglePlane(voxel_plane, "plane",
+                                                       *(leaves->plane_ptr_),
+                                                       alpha, plane_rgb);
+                                        // loop.sleep();
+                                        leaves->plane_ptr_->is_update = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    plane_map_pub.publish(voxel_plane);
+    // plane_map_pub.publish(voxel_norm);
+    loop.sleep();
+    // cout << "[Map Info] Plane counts:" << plane_count
+    //      << " Sub Plane counts:" << sub_plane_count
+    //      << " Sub Sub Plane counts:" << sub_sub_plane_count << endl;
+    // cout << "[Map Info] Update plane counts:" << update_count
+    //      << "total size: " << feat_map.size() << endl;
+}
+
+void pubNoPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
+                   const ros::Publisher &plane_map_pub) {
+    int id = 0;
+    ros::Rate loop(500);
+    float use_alpha = 0.8;
+    visualization_msgs::MarkerArray voxel_plane;
+    voxel_plane.markers.reserve(1000000);
+    for (const auto & iter : feat_map) {
+        if (!iter.second->plane_ptr_->is_plane) {
+            for (auto & leave : iter.second->leaves_) {
+                if (leave != nullptr) {
+                    OctoTree *temp_octo_tree = leave;
+                    if (!temp_octo_tree->plane_ptr_->is_plane) {
+                        for (auto & j : temp_octo_tree->leaves_) {
+                            if (j != nullptr) {
+                                if (!j->plane_ptr_->is_plane) {
+                                    Eigen::Vector3d plane_rgb(1, 1, 1);
+                                    pubSinglePlane(voxel_plane, "no_plane",
+                                                   *(j->plane_ptr_),
+                                                   use_alpha, plane_rgb);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    plane_map_pub.publish(voxel_plane);
+    loop.sleep();
+}
+
 
 #endif //VOXEL_MAP_UTIL_HPP

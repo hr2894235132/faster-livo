@@ -98,6 +98,10 @@ namespace faster_lio {
 
         void publish_visual_world_map(const ros::Publisher &pubVisualCloud);
 
+        void publish_effect(const ros::Publisher &pubLaserCloudEffect);
+
+        void publish_frame_world(const ros::Publisher &pubLaserCloudFullRes, const int point_skip);
+
         void Savetrajectory(const std::string &traj_file);
 
         void Finish();

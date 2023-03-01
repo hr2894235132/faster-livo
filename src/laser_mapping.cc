@@ -839,14 +839,14 @@ namespace faster_lio {
                                 R_inv(i) = 1.0 / (sigma_l + norm_vec.transpose() * cov * norm_vec);
                                 double ranging_dis = point_this.norm();
                                 // TODO: 公式？？？ 更新引入点的噪声模型的一些点的属性信息
-                                laserCloudOri->points[i].intensity = sqrt(R_inv(i));
-                                // 表示给定点所在样本曲面上的法线方向
-                                laserCloudOri->points[i].normal_x = corr_normvect->points[i].intensity; // point-to-plane dist
-                                laserCloudOri->points[i].normal_y = sqrt(sigma_l);
-                                laserCloudOri->points[i].normal_z = sqrt(norm_vec.transpose() * cov * norm_vec);
-                                // 曲率值
-                                laserCloudOri->points[i].curvature = sqrt(
-                                        sigma_l + norm_vec.transpose() * cov * norm_vec);
+//                                laserCloudOri->points[i].intensity = sqrt(R_inv(i));
+//                                // 表示给定点所在样本曲面上的法线方向
+//                                laserCloudOri->points[i].normal_x = corr_normvect->points[i].intensity; // point-to-plane dist
+//                                laserCloudOri->points[i].normal_y = sqrt(sigma_l);
+//                                laserCloudOri->points[i].normal_z = sqrt(norm_vec.transpose() * cov * norm_vec);
+//                                // 曲率值
+//                                laserCloudOri->points[i].curvature = sqrt(
+//                                        sigma_l + norm_vec.transpose() * cov * norm_vec);
                                 /*** calculate the Measuremnt Jacobian matrix H ***/
                                 V3D A(point_crossmat * state.rot_end.transpose() * norm_vec); // 公式(50)
                                 Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z;
@@ -952,8 +952,8 @@ namespace faster_lio {
                                 if (flg_EKF_inited_) {
                                     /*** Covariance Update ***/
 #ifdef USE_VOXEL_OCTREE
-//                                    G.setZero();
-//                                    G.block<DIM_STATE, 6>(0, 0) = K * Hsub;
+                                    G.setZero();
+                                    G.block<DIM_STATE, 6>(0, 0) = K * Hsub;
 #endif
                                     state.cov = (I_STATE - G) * state.cov;
                                     total_distance_ += (state.pos_end - position_last_).norm();
@@ -1676,7 +1676,7 @@ namespace faster_lio {
 //            laserCloudWorld = scan_down_world_;
 //        }
 
-        if (run_in_offline_ == false && scan_pub_en_) {
+        if (!run_in_offline_ && scan_pub_en_) {
             sensor_msgs::PointCloud2 laserCloudmsg;
             pcl::toROSMsg(*pcl_wait_pub_, laserCloudmsg);
             laserCloudmsg.header.stamp = ros::Time::now(); //.fromSec(last_timestamp_lidar);
@@ -1808,6 +1808,55 @@ namespace faster_lio {
             publish_count -= options::PUBFRAME_PERIOD;
             // pcl_wait_pub->clear();
         }
+    }
+
+    void LaserMapping::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
+                             const int point_skip) {
+        PointCloudType::Ptr laserCloudFullRes(dense_map_en ? scan_undistort_ : scan_down_body_);
+        int size = laserCloudFullRes->points.size();
+        PointCloudType::Ptr laserCloudWorld(new PointCloudType(size, 1));
+        for (int i = 0; i < size; i++) {
+            RGBpointBodyToWorld(&laserCloudFullRes->points[i],
+                                &laserCloudWorld->points[i]);
+        }
+        PointCloudType::Ptr laserCloudWorldPub(new PointCloudType);
+        for (int i = 0; i < size; i += point_skip) {
+            laserCloudWorldPub->points.push_back(laserCloudWorld->points[i]);
+        }
+        sensor_msgs::PointCloud2 laserCloudmsg;
+        pcl::toROSMsg(*laserCloudWorldPub, laserCloudmsg);
+        laserCloudmsg.header.stamp =
+                ros::Time::now(); //.fromSec(last_timestamp_lidar);
+        laserCloudmsg.header.frame_id = "camera_init";
+        pubLaserCloudFullRes.publish(laserCloudmsg);
+    }
+
+    void LaserMapping::publish_effect(const ros::Publisher &pubLaserCloudEffect) {
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr effect_cloud_world(
+                new pcl::PointCloud<pcl::PointXYZRGB>);
+        PointCloudType::Ptr laserCloudWorld(new PointCloudType(effect_feat_num_, 1));
+        for (int i = 0; i < effect_feat_num_; i++) {
+            RGBpointBodyToWorld(&laserCloudOri->points[i], &laserCloudWorld->points[i]);
+            pcl::PointXYZRGB pi;
+            pi.x = laserCloudWorld->points[i].x;
+            pi.y = laserCloudWorld->points[i].y;
+            pi.z = laserCloudWorld->points[i].z;
+            float v = laserCloudWorld->points[i].intensity / 100;
+            v = 1.0 - v;
+            uint8_t r, g, b;
+            mapJet(v, 0, 1, r, g, b);
+            pi.r = r;
+            pi.g = g;
+            pi.b = b;
+            effect_cloud_world->points.push_back(pi);
+        }
+
+        sensor_msgs::PointCloud2 laserCloudFullRes3;
+        pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
+        laserCloudFullRes3.header.stamp =
+                ros::Time::now(); //.fromSec(last_timestamp_lidar);
+        laserCloudFullRes3.header.frame_id = "camera_init";
+        pubLaserCloudEffect.publish(laserCloudFullRes3);
     }
 
     void LaserMapping::Savetrajectory(const std::string &traj_file) {
