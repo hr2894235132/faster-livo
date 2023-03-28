@@ -17,10 +17,6 @@
 //inline void kitti_log(FILE *fp) {}
 
 namespace faster_lio {
-
-    // TODO：12.1 hr 打印状态信息
-    std::ofstream fout_pre, fout_out;
-
     /**
      * @brief ROS初始化
      * @param nh
@@ -838,7 +834,7 @@ namespace faster_lio {
                                 double sigma_l = J_nq * ptpl_list[i].plane_cov * J_nq.transpose(); // 公式(11) 噪声部分
                                 R_inv(i) = 1.0 / (sigma_l + norm_vec.transpose() * cov * norm_vec);
                                 double ranging_dis = point_this.norm();
-                                // TODO: 公式？？？ 更新引入点的噪声模型的一些点的属性信息
+                                // TODO: 更新引入点的噪声模型的一些点的属性信息，作者回复这些更新没有什么用
 //                                laserCloudOri->points[i].intensity = sqrt(R_inv(i));
 //                                // 表示给定点所在样本曲面上的法线方向
 //                                laserCloudOri->points[i].normal_x = corr_normvect->points[i].intensity; // point-to-plane dist
@@ -917,14 +913,14 @@ namespace faster_lio {
                                 solution = K * meas_vec + vec - K * Hsub * vec.block<6, 1>(0, 0);
 #endif
 
-                                if (0)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
-                                {
-                                    VD(6)
-                                            V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
-                                    cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
-                                    EKF_stop_flg_ = true;
-                                    solution.block<6, 1>(9, 0).setZero();
-                                }
+//                                if (false)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
+//                                {
+//                                    VD(6)
+//                                            V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
+//                                    cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
+//                                    EKF_stop_flg_ = true;
+//                                    solution.block<6, 1>(9, 0).setZero();
+//                                }
                                 state += solution;
                                 rot_add = solution.block<3, 1>(0, 0);
                                 t_add = solution.block<3, 1>(3, 0);

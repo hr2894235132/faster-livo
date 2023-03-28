@@ -907,7 +907,7 @@ void pubPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
     visualization_msgs::MarkerArray voxel_plane; // visualization_msgs::MarkerArray:在rviz中的指定位置显示文字信息并实时更新
     voxel_plane.markers.reserve(1000000);
 
-    for (const auto & iter : feat_map) {
+    for (const auto &iter: feat_map) {
         if (iter.second->plane_ptr_->is_update) {
             Eigen::Vector3d normal_rgb(0.0, 1.0, 0.0);
 
@@ -939,7 +939,7 @@ void pubPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
 
             iter.second->plane_ptr_->is_update = false;
         } else {
-            for (auto & leave : iter.second->leaves_) {
+            for (auto &leave: iter.second->leaves_) {
                 if (leave != nullptr) {
                     if (leave->plane_ptr_->is_update) {
                         Eigen::Vector3d normal_rgb(0.0, 1.0, 0.0);
@@ -975,7 +975,7 @@ void pubPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
                         // loop.sleep();
                     } else {
                         OctoTree *temp_octo_tree = leave;
-                        for (auto & leaves : temp_octo_tree->leaves_) {
+                        for (auto &leaves: temp_octo_tree->leaves_) {
                             if (leaves != nullptr) {
                                 if (leaves->octo_state_ == 0 &&
                                     leaves->plane_ptr_->is_update) {
@@ -1034,13 +1034,13 @@ void pubNoPlaneMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map,
     float use_alpha = 0.8;
     visualization_msgs::MarkerArray voxel_plane;
     voxel_plane.markers.reserve(1000000);
-    for (const auto & iter : feat_map) {
+    for (const auto &iter: feat_map) {
         if (!iter.second->plane_ptr_->is_plane) {
-            for (auto & leave : iter.second->leaves_) {
+            for (auto &leave: iter.second->leaves_) {
                 if (leave != nullptr) {
                     OctoTree *temp_octo_tree = leave;
                     if (!temp_octo_tree->plane_ptr_->is_plane) {
-                        for (auto & j : temp_octo_tree->leaves_) {
+                        for (auto &j: temp_octo_tree->leaves_) {
                             if (j != nullptr) {
                                 if (!j->plane_ptr_->is_plane) {
                                     Eigen::Vector3d plane_rgb(1, 1, 1);

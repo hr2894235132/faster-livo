@@ -105,7 +105,8 @@ namespace faster_lio {
         void Savetrajectory(const std::string &traj_file);
 
         void Finish();
-        static bool var_contrast(pointWithCov &x, pointWithCov &y){
+
+        static bool var_contrast(pointWithCov &x, pointWithCov &y) {
             return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
         }
 
@@ -143,6 +144,8 @@ namespace faster_lio {
         }
 
     private:
+        // TODO：12.1 hr 打印状态信息
+        std::ofstream fout_pre, fout_out;
         /// modules
         IVoxType::Options ivox_options_;
         std::shared_ptr<IVoxType> ivox_ = nullptr;                    // localmap in ivox
