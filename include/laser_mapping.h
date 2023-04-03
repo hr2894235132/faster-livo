@@ -190,7 +190,7 @@ namespace faster_lio {
         VV4F corr_pts_;                           // inlier pts
         VV4F corr_norm_;                          // inlier plane norms
         PointCloudType::Ptr laserCloudOri{new PointCloudType()};
-        PointCloudType::Ptr laserCloudNoeffect{new PointCloudType()};
+//        PointCloudType::Ptr laserCloudNoeffect{new PointCloudType()};
         PointCloudType::Ptr corr_normvect{new PointCloudType()};
         pcl::VoxelGrid<PointType> voxel_scan_;            // voxel filter for current scan
         pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -219,7 +219,7 @@ namespace faster_lio {
         ros::Publisher pubSubVisualCloud;
         ros::Publisher pubLaserCloudEffect;
         ros::Publisher pubLaserCloudMap;
-        ros::Publisher voxel_map_pub;
+//        ros::Publisher voxel_map_pub;
 
 
         std::mutex mtx_buffer_;
@@ -328,8 +328,22 @@ namespace faster_lio {
 
         bool calib_laser = false;
         double map_incremental_time;
+        double total_time;
 
         std::string result_path = "";
+
+        // record point usage
+        double mean_effect_points = 0;
+        double mean_ds_points = 0;
+        double mean_raw_points = 0;
+
+        // record time
+        double undistort_time_mean = 0;
+        double down_sample_time_mean = 0;
+        double calc_cov_time_mean = 0;
+        double scan_match_time_mean = 0;
+        double ekf_solve_time_mean = 0;
+        double map_update_time_mean = 0;
 
     };
 
