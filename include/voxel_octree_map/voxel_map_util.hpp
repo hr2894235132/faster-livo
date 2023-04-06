@@ -66,6 +66,8 @@ typedef struct Plane {
     bool is_update = false;
     int last_update_points_size = 0;
     bool update_enable = true;
+    // TODO:0404增加成员变量layer用来记录plane所处的层数
+    int layer;
 } Plane;
 
 class VOXEL_LOC {
@@ -145,7 +147,7 @@ public:
 
     /* check is plane , calc plane parameters including plane covariance */
     // TODO: 0213修改waring，将init_plane()改为const成员函数
-    void init_plane(const std::vector<pointWithCov> &points, Plane *plane) const {
+    void init_plane(const std::vector<pointWithCov> &points, Plane *plane) {
         /* init parameters of plane */
         plane->plane_cov = Eigen::Matrix<double, 6, 6>::Zero();
         plane->covariance = Eigen::Matrix3d::Zero();
@@ -153,6 +155,8 @@ public:
         plane->normal = Eigen::Vector3d::Zero();
         plane->points_size = points.size();
         plane->radius = 0;
+//        // TODO:0404更新平面所在层数
+//        plane->layer = layer_;
         // TODO: 0213 修改waring，使用range循环方式
         for (auto pv: points) {
             plane->covariance += pv.point * pv.point.transpose();
@@ -215,6 +219,8 @@ public:
             plane->d = -(plane->normal(0) * plane->center(0) + plane->normal(1) * plane->center(1) +
                          plane->normal(2) * plane->center(2)); // 计算点面匹配残差时的第二部分
             plane->is_plane = true;
+//            // TODO:0404更新平面所在层数
+//            plane->layer = layer_;
             // TODO: 0213修改waring,条件中有重复分支
             if (plane->last_update_points_size == 0 || plane->points_size - plane->last_update_points_size > 100) {
                 plane->last_update_points_size = plane->points_size;
@@ -259,6 +265,8 @@ public:
             plane->radius = sqrt((float) evalsReal(evalsMax));
             plane->d = -(plane->normal(0) * plane->center(0) + plane->normal(1) * plane->center(1) +
                          plane->normal(2) * plane->center(2));
+//            // TODO:0404更新平面所在层数
+//            plane->layer = layer_;
         }
     }
 
@@ -311,6 +319,8 @@ public:
 
             plane->is_plane = true;
             plane->is_update = true;
+//            // TODO:0404更新平面所在层数
+//            plane->layer = layer_;
         } else {
             plane->normal << evecs.real()(0, evalsMin), evecs.real()(1, evalsMin),
                     evecs.real()(2, evalsMin);
@@ -327,6 +337,8 @@ public:
                          plane->normal(2) * plane->center(2));
             plane->is_plane = false;
             plane->is_update = true;
+//            // TODO:0404更新平面所在层数
+//            plane->layer = layer_;
         }
     }
 
@@ -345,6 +357,9 @@ public:
                 octo_state_ = 1;
                 cut_octo_tree(); //继续细分
             }
+//            // TODO:0404更新平面所在层数
+//            plane_ptr_->layer = layer_;
+
             init_octo_ = true;
             new_points_num_ = 0;
         }
@@ -554,14 +569,11 @@ void buildVoxelMap(const std::vector<pointWithCov> &input_points, const float vo
         auto iter = feat_map.find(position);
         // 对于一个新增的点，首先计算索引key，查找此 key 是否已经存在,若存在，则向对应体素里新增点；若不存在，则先创建新OctoTree再插入点
         if (iter != feat_map.end()) {
-            cout << "build map: find it !!!!!!!!" << endl;
             feat_map[position]->temp_points_.push_back(p_v);
             feat_map[position]->new_points_num_++;
         } else {
-            cout << "bbbbbbbbbbbbb" << endl;
             auto *octoTree = new OctoTree(max_layer, 0, layer_point_size, max_points_size, max_cov_points_size,
                                           planer_threshold);
-            cout << "aaaaaaaaaaaaaa" << endl;
             feat_map[position] = octoTree;
             feat_map[position]->quater_length_ = voxel_size / 4;
             feat_map[position]->voxel_center_[0] =
@@ -588,38 +600,24 @@ void updateVoxelMap(const std::vector<pointWithCov> &input_points, const float v
         float loc_xyz[3];
         for (int j = 0; j < 3; ++j) {
             loc_xyz[j] = p_v.point[j] / voxel_size;
-//            cout << loc_xyz[j] << " " << endl;
             if (loc_xyz[j] < 0) loc_xyz[j] -= 1.0;
         }
         VOXEL_LOC position((int64_t) loc_xyz[0], (int64_t) loc_xyz[1], (int64_t) loc_xyz[2]);
         auto iter = feat_map.find(position);
         if (iter != feat_map.end()) {
-//            cout << "kkkkkkkkkkkkkkkk" << endl;
             /* when the new points are added to an existing voxel, the parameters and the uncertainty of the plane
              * in the voxel should be updated */
             feat_map[position]->UpdateOctoTree(p_v);
-//            cout << "jjjjjjjjjjjjj" << endl;
         } else {
-//            cout << "fffffffffff" << endl;
             /* When the new points lie in an unpopulated voxel, it will construct the voxel */
             OctoTree *octo_tree = new OctoTree(max_layer, 0, layer_point_size, max_points_size, max_cov_points_size,
                                                planer_threshold);
-//            std::shared_ptr<OctoTree> octo_tree = std::make_shared<OctoTree>(max_layer, 0, layer_point_size,
-//                                                                          max_points_size, max_cov_points_size,
-//                                                                          planer_threshold);
-//            cout << "ggggggggggg" << endl;
             feat_map[position] = octo_tree;
-//            cout << "gggggggggggg" << endl;
             feat_map[position]->quater_length_ = voxel_size / 4;
-//            cout << "ggggggggggggg" << endl;
             feat_map[position]->voxel_center_[0] = (0.5 + position.x) * voxel_size;
-//            cout << "gggggggggggggg" << endl;
             feat_map[position]->voxel_center_[1] = (0.5 + position.y) * voxel_size;
-//            cout << "ggggggggggggggg" << endl;
             feat_map[position]->voxel_center_[2] = (0.5 + position.z) * voxel_size;
-//            cout << "gggggggggggggggg" << endl;
             feat_map[position]->UpdateOctoTree(p_v);
-//            cout << "hhhhhhhhhhhhhhhh" << endl;
         }
     }
 }
@@ -765,10 +763,12 @@ void BuildResidualListOMP(const unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
 }
 
 void GetUpdatePlane(const OctoTree *current_octo, const int pub_max_voxel_layer, std::vector<Plane> &plane_list) {
-    if (current_octo->layer_ > pub_max_voxel_layer) {
-        return;
-    }
+//    if (current_octo->layer_ > pub_max_voxel_layer) {
+//        return;
+//    }
+
     if (current_octo->plane_ptr_->is_plane) {
+        current_octo->plane_ptr_->layer = current_octo->layer_;
         plane_list.push_back(*current_octo->plane_ptr_);
     }
     if (current_octo->layer_ < current_octo->max_layer_) {
@@ -853,7 +853,7 @@ void pubSinglePlane(visualization_msgs::MarkerArray &plane_pub, const std::strin
     plane.scale.x = 3 * sqrt(single_plane.max_eigen_value);
     plane.scale.y = 3 * sqrt(single_plane.mid_eigen_value);
     plane.scale.z = 2 * sqrt(single_plane.min_eigen_value);
-    plane.color.a = alpha;
+    plane.color.a = alpha; // 透明度
     plane.color.r = rgb(0);
     plane.color.g = rgb(1);
     plane.color.b = rgb(2);
@@ -867,8 +867,11 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
     double pow_num = 0.2;
     ros::Rate loop(500);
     float use_alpha = 0.8;
-    visualization_msgs::MarkerArray voxel_plane;
-    voxel_plane.markers.reserve(1000000);
+    visualization_msgs::MarkerArray voxel_plane0, voxel_plane1, voxel_plane2, voxel_plane3;
+    voxel_plane0.markers.reserve(1000000);
+    voxel_plane1.markers.reserve(1000000);
+    voxel_plane2.markers.reserve(1000000);
+    voxel_plane3.markers.reserve(1000000);
     std::vector<Plane> pub_plane_list;
     for (const auto &iter: voxel_map) {
         GetUpdatePlane(iter.second, pub_max_voxel_layer, pub_plane_list); // 得到pub_plane_list
@@ -885,14 +888,61 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
         mapJet(trace, 0, 1, r, g, b);
         Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
         float alpha;
-        if (p_list.is_plane) {
-            alpha = use_alpha;
-        } else {
-            alpha = 0;
+        // TODO：0406指定发布对应平面
+        {
+            if (p_list.layer == 0) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane0, "plane0", p_list, alpha, plane_rgb);
         }
-        pubSinglePlane(voxel_plane, "plane", p_list, alpha, plane_rgb);
+        {
+            if (p_list.layer == 1) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane1, "plane1", p_list, alpha, plane_rgb);
+        }
+        {
+            if (p_list.layer == 2) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane2, "plane2", p_list, alpha, plane_rgb);
+        }
+        {
+            if (p_list.layer == 3) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane3, "plane3", p_list, alpha, plane_rgb);
+        }
+
     }
-    plane_map_pub.publish(voxel_plane);
+    plane_map_pub.publish(voxel_plane0);
+    plane_map_pub.publish(voxel_plane1);
+    plane_map_pub.publish(voxel_plane2);
+    plane_map_pub.publish(voxel_plane3);
     loop.sleep();
 }
 

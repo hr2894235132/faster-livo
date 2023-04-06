@@ -12,6 +12,7 @@
 #include "common_lib.h"
 
 #define RETURN0AND1 0x10
+#define RETURN0AND2 0x00
 
 namespace velodyne_ros {
 struct EIGEN_ALIGN16 Point {

@@ -1,6 +1,6 @@
 common:
   lid_topic: "/livox/lidar"
-  # imu_topic: "/new_imu"
+  imu_topic: "/new_imu"
   time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
 
 preprocess:
@@ -19,14 +19,14 @@ mapping:
   fov_degree: 70
   det_range: 260.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
-  extrinsic_T: [ -0.017020, 0.085815, -0.024827 ]
-  extrinsic_R: [ 0.046790, -0.998811, 0.013708,
-                   -0.023212, -0.014807, -0.999621,
-                   0.998635, 0.046454, -0.023877]
-  # extrinsic_T: [ -0.0275814, 0.0145758, -0.085423 ]
-  # extrinsic_R: [ 1, 0, 0,
-  #                0, 1, 0,
-  #                0, 0, 1]
+  # extrinsic_T: [ -0.017020, 0.085815, -0.024827 ]
+  # extrinsic_R: [ 0.046790, -0.998811, 0.013708,
+  #                  -0.023212, -0.014807, -0.999621,
+  #                  0.998635, 0.046454, -0.023877]
+  extrinsic_T: [ -0.0275814, 0.0145758, -0.085423 ]
+  extrinsic_R: [ 1, 0, 0,
+                 0, 1, 0,
+                 0, 0, 1]
 
 camera:
     # img_topic: /usb_cam/image_raw

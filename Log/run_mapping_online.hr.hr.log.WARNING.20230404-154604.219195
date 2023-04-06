@@ -1,0 +1,27 @@
+Log file created at: 2023/04/04 15:46:04
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W0404 15:46:04.927126 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.028308 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.028620 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.028712 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.028926 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.029098 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.129284 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.129380 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.129631 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.129969 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.130162 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.130306 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.228097 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.230116 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:46:05.230162 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.230816 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:46:05.230865 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.232097 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:46:05.232151 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.233397 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:46:05.233456 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.234562 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:46:05.234622 219195 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:46:05.235684 219195 laser_mapping.cc:495] Too few points, skip this scan!0, 0

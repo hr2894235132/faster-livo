@@ -9,7 +9,7 @@
 
 /// run the lidar mapping in online mode
 
-DEFINE_string(traj_log_file, "./Log/traj.txt", "path to traj log file");
+DEFINE_string(traj_log_file, "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log/traj.txt", "path to traj log file");
 
 void SigHandle(int sig) {
     faster_lio::options::FLAG_EXIT = true;
@@ -20,6 +20,7 @@ int main(int argc, char **argv) {
     FLAGS_stderrthreshold = google::INFO;
     FLAGS_colorlogtostderr = true;
     google::InitGoogleLogging(argv[0]);
+    fLS::FLAGS_log_dir = "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log";
 
     ros::init(argc, argv, "faster_lio");
     ros::NodeHandle nh;

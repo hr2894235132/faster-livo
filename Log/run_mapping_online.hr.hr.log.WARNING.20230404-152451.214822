@@ -1,0 +1,25 @@
+Log file created at: 2023/04/04 15:24:51
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W0404 15:24:51.802240 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:51.902778 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:51.903440 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:51.903693 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.000814 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.000932 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.001178 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.001372 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.001758 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.001946 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.100175 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.104323 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:24:52.104463 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.106513 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:24:52.106637 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.108673 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:24:52.108786 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.110530 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:24:52.110646 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.111586 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0
+W0404 15:24:52.111657 214822 laser_mapping.cc:377] No point, skip this scan!
+W0404 15:24:52.112522 214822 laser_mapping.cc:495] Too few points, skip this scan!0, 0

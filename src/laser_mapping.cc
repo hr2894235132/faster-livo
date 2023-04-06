@@ -160,8 +160,8 @@ namespace faster_lio {
         }
         // visualization params
         nh.param<bool>("publish/pub_voxel_map", publish_voxel_map, false);
-        nh.param<int>("publish/publish_max_voxel_layer",
-                      publish_max_voxel_layer, 0);
+        nh.param<int>("publish/publish_max_voxel_layer", publish_max_voxel_layer, 0);
+        nh.param<int>("publish/publish_only_voxel_layer", publish_only_voxel_layer, 0);
         nh.param<bool>("publish/pub_point_cloud", publish_point_cloud, true);
         nh.param<int>("publish/pub_point_cloud_skip", pub_point_cloud_skip, 1);
 #endif
@@ -316,7 +316,7 @@ namespace faster_lio {
     void LaserMapping::Run() {
         if (!SyncPackages(LidarMeasures_)) {
             cv::waitKey(1);
-            return; // Run终止
+            return;
         }
 
         /*** Packaged got ***/
@@ -326,13 +326,13 @@ namespace faster_lio {
             flg_reset_ = false;
             return;
         }
-        std::cout << "scanIdx:" << scanIdx << std::endl;
+        std::cout << "scan_Idx: " << scanIdx << std::endl;
         double t0, t1, t2, t3, t4, t5, match_start, solve_start;
         match_time = solve_time = solve_const_H_time = 0;
         t0 = omp_get_wtime();
         /// IMU process, kf prediction, undistortion
         // IMU数据初始化，初始化完成后进入去畸变函数
-        // 去畸变函数中，利用IMU数据对kf_状态进行前向传播，同时对点云进行去畸变，得到scan_undistort_,lidar系
+        // 去畸变函数中，利用IMU数据对kf_状态进行前向传播，同时对点云进行去畸变，得到scan_undistort_（lidar系）
 #ifdef USE_IKFOM
         p_imu_->Process(measures_, kf_, scan_undistort_);
         // TODO:12.1 hr 获取kf预测的全局状态（imu）
@@ -340,7 +340,11 @@ namespace faster_lio {
         pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I; // global系下 lidar的位置
 #else
         auto undistort_start = std::chrono::high_resolution_clock::now();
-        p_imu_->Process2(LidarMeasures_, state, scan_undistort_);
+        Timer::Evaluate(
+                [&, this]() {
+                    p_imu_->Process2(LidarMeasures_, state, scan_undistort_);
+                },
+                "Undistort PointCloud");
         auto undistort_end = std::chrono::high_resolution_clock::now();
         auto undistort_time =
                 std::chrono::duration_cast<std::chrono::duration<double >>(undistort_end - undistort_start).count() *
@@ -375,7 +379,7 @@ namespace faster_lio {
                 first_lidar_time_ = LidarMeasures_.lidar_beg_time_;
                 p_imu_->first_lidar_time = first_lidar_time_;
                 LidarMeasures_.measures.clear();
-                cout << "FAST_LIO not ready" << endl;
+                printf("FAST_LIO not ready\n");
                 return;
             }
         } else {
@@ -393,10 +397,7 @@ namespace faster_lio {
             return;
         }
         // 检查当前lidar数据时间，与最早lidar数据时间是否足够
-        cout << " LidarMeasures_.lidar_beg_time_: " << LidarMeasures_.lidar_beg_time_ << "  first_lidar_time_"
-             << first_lidar_time_ << endl;
         flg_EKF_inited_ = (LidarMeasures_.lidar_beg_time_ - first_lidar_time_) >= options::INIT_TIME; // 0.1
-        cout << "!!!!!!!!!!!" << "flag_EKF_inited_: " << flg_EKF_inited_ << endl;
 
 #ifdef USE_VOXEL_OCTREE
         // TODO:2023.02.09 初始化体素-八叉树表征地图
@@ -406,46 +407,9 @@ namespace faster_lio {
             transformLidar(state, p_imu_, scan_undistort_, world_lidar_);
             std::vector<pointWithCov> pv_list;
             /* 计算每个点的协方差 */
-            for (size_t i = 0; i < world_lidar_->size(); ++i) {
-                pointWithCov pv;
-                pv.point << world_lidar_->points[i].x, world_lidar_->points[i].y, world_lidar_->points[i].z;
-                V3D point_this(scan_undistort_->points[i].x, scan_undistort_->points[i].y,
-                               scan_undistort_->points[i].z);
-                // if z=0, error will occur in calcBodyCov. To be solved
-                if (point_this[2] == 0)
-                    point_this[2] = 0.001;
-
-                // TODO:0301坐标系问题
-                point_this = lidar_R_wrt_IMU * point_this + lidar_T_wrt_IMU;
-                M3D point_crossmat; // 斜对角矩阵
-                point_crossmat << SKEW_SYM_MATRIX(point_this);
-                M3D cov;
-                calcBodyCov(point_this, ranging_cov, angle_cov, cov);
-//                point_this += lidar_T_wrt_IMU;
-//                point_crossmat << SKEW_SYM_MATRIX(point_this);
-                // TODO:按照论文中公式（3）修改cov计算
-                cov = state.rot_end * cov * state.rot_end.transpose() +
-                      state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) *
-                      (-point_crossmat).transpose() * state.rot_end.transpose() +
-                      state.cov.block<3, 3>(3, 3);
-//                cov = state.rot_end * cov * state.rot_end.transpose() +
-//                      (-point_crossmat) * state.cov.block<3, 3>(0, 0) * (-point_crossmat).transpose() +
-//                      state.cov.block<3, 3>(3, 3);
-                pv.cov = cov;
-                pv_list.push_back(pv);
-                Eigen::Vector3d sigma_pv = pv.cov.diagonal();
-                sigma_pv[0] = sqrt(sigma_pv[0]);
-                sigma_pv[1] = sqrt(sigma_pv[1]);
-                sigma_pv[2] = sqrt(sigma_pv[2]);
-            }
-
+            calcPointcov(world_lidar_, scan_undistort_, pv_list);
             buildVoxelMap(pv_list, max_voxel_size, max_layer, layer_size, max_points_size, max_points_size,
                           min_eigen_value, voxel_map);
-            std::cout << "build voxel map" << std::endl;
-//            if (write_kitti_log) {
-//                kitti_log(fp_kitti);
-//            }
-
             scanIdx++;
             if (publish_voxel_map) {
                 pubVoxelMap(voxel_map, publish_max_voxel_layer, voxel_map_pub);
@@ -522,7 +486,6 @@ namespace faster_lio {
         auto t_downsample = std::chrono::duration_cast<std::chrono::duration<double>>(
                 t_downsample_end - t_downsample_start).count() * 1000;
         int cur_pts = scan_down_body_->points.size();
-//        scan_down_body_->points.size();
         cout << "[ LIO ]: Raw feature num: " << scan_undistort_->points.size() << " downsamp num " << cur_pts << "."
              << endl;
         // TODO: 按曲率排序点云
@@ -557,7 +520,6 @@ namespace faster_lio {
         int rematch_num = 0;
         bool nearest_search_en = true;
         t2 = omp_get_wtime();
-
         double t_update_start_ = omp_get_wtime();
 #ifdef USE_IKFOM
         // ICP and iterated Kalman filter update
@@ -589,13 +551,6 @@ namespace faster_lio {
                 "IEKF Solve and Update");
 #else
 
-//        if (img_en) {
-//            omp_set_num_threads(MP_PROC_NUM); // 设置线程的默认周期数为MP_PROC_NUM 4
-//#pragma omp parallel for  // 并行计算
-//            for (int i = 0; i < 1; i++) {}
-//        }
-
-
         double calc_point_cov_time;
         std::vector<M3D> body_var; // 存点的cov
         std::vector<M3D> crossmat_list; // 存协方差矩阵
@@ -603,40 +558,36 @@ namespace faster_lio {
         Timer::Evaluate(
                 [&, this]() {
                     if (lidar_en) {
-                        /* lidar IEKF */
+                        /** lidar IEKF **/
 #ifdef USE_VOXEL_OCTREE
                         /* TODO:0214 加入计算雷达点的协方差的过程 */
                         auto calc_point_cov_start = std::chrono::high_resolution_clock::now();
-                        for (auto &point: scan_down_body_->points) {
-                            V3D point_this(point.x, point.y, point.z);
-                            if (point_this[2] == 0)
-                                point_this[2] = 0.001;
+                        Timer::Evaluate(
+                                [&, this]() {
+                                    for (auto &point: scan_down_body_->points) {
+                                        V3D point_this(point.x, point.y, point.z);
+                                        if (point_this[2] == 0)
+                                            point_this[2] = 0.001;
 
-                            M3D point_crossmat;
-//                            point_crossmat << SKEW_SYM_MATRIX(point_this); // TODO：坐标系问题
-//                            crossmat_list.push_back(point_crossmat);
-                            point_this = lidar_R_wrt_IMU * point_this + lidar_T_wrt_IMU;
-//                            point_this += lidar_T_wrt_IMU;
-                            M3D cov;
-                            calcBodyCov(point_this, ranging_cov, angle_cov, cov);
-                            point_crossmat << SKEW_SYM_MATRIX(point_this);
-                            crossmat_list.push_back(point_crossmat);
-//                            M3D rot_var = state.cov.block<3, 3>(0, 0);
-//                            M3D t_var = state.cov.block<3, 3>(3, 3);
-                            body_var.push_back(cov);
-                        }
+                                        M3D point_crossmat;
+                                        point_this = lidar_R_wrt_IMU * point_this + lidar_T_wrt_IMU;
+                                        M3D cov;
+                                        calcBodyCov(point_this, ranging_cov, angle_cov, cov);
+                                        point_crossmat << SKEW_SYM_MATRIX(point_this);
+                                        crossmat_list.push_back(point_crossmat);
+                                        body_var.push_back(cov);
+                                    }
+                                },
+                                "calculate points' cov");
                         auto calc_point_cov_end = std::chrono::high_resolution_clock::now();
                         calc_point_cov_time = std::chrono::duration_cast<std::chrono::duration<double >>(
                                 calc_point_cov_end - calc_point_cov_start).count() * 1000; // 成员函数count(),用来表示这一段时间的长度
-                        cout << "the time of calc_point_cov:" << calc_point_cov_time << endl;
 #endif
                         for (iterCount = -1; iterCount < options::NUM_MAX_ITERATIONS && flg_EKF_inited_; iterCount++) {
-                            cout << "start iteration:" << endl;
+                            cout << "------------------" << "第" << iterCount << "次迭代：" << endl;
                             match_start = omp_get_wtime();
                             PointCloudType().swap(*laserCloudOri);
                             PointCloudType().swap(*corr_normvect);
-//                            PointCloudType().swap(*laserCloudNoeffect);
-//                            laserCloudNoeffect->clear();
                             total_residual_ = 0.0;
 
                             /** closest surface search and residual computation **/
@@ -663,21 +614,22 @@ namespace faster_lio {
                                 cov = state.rot_end * cov * state.rot_end.transpose() +
                                       state.rot_end * (-point_crossmat) * rot_var * (-point_crossmat.transpose()) *
                                       state.rot_end.transpose() + t_var; // 公式3
-//                cov = state.rot_end * cov * state.rot_end.transpose() +
-//                      (-point_crossmat) * state.cov.block<3, 3>(0, 0) * (-point_crossmat).transpose() +
-//                      state.cov.block<3, 3>(3, 3);
-
                                 pv.cov = cov;
                                 pv_list.push_back(pv);
                                 var_list.push_back(cov);
                             }
-                            cout << "end of update pv_list" << endl;
                             /* point-to-plane匹配 */
                             auto scan_match_time_start = std::chrono::high_resolution_clock::now();
-                            std::vector<V3D> non_match_list;
-                            BuildResidualListOMP(voxel_map, max_voxel_size, 3.0, max_layer, pv_list, ptpl_list,
-                                                 non_match_list);
+                            Timer::Evaluate(
+                                    [&, this]() {
+                                        std::vector<V3D> non_match_list;
+                                        BuildResidualListOMP(voxel_map, max_voxel_size, 3.0, max_layer, pv_list,
+                                                             ptpl_list,
+                                                             non_match_list);
+                                    },
+                                    "Scan Match");
                             auto scan_match_time_end = std::chrono::high_resolution_clock::now();
+
                             effect_feat_num_ = 0;
                             for (int i = 0; i < ptpl_list.size(); ++i) {
                                 PointType pi_body;
@@ -702,7 +654,11 @@ namespace faster_lio {
                             res_mean_last = total_residual_ / effect_feat_num_;
                             match_time += std::chrono::duration_cast<std::chrono::duration<double >>(
                                     scan_match_time_end - scan_match_time_start).count() * 1000;
-                            cout << "match_time: " << match_time << endl;
+                            cout << "[ Matching ]: Time:" << std::chrono::duration_cast<std::chrono::duration<double>>(
+                                    scan_match_time_end - scan_match_time_start).count() * 1000
+                                 << " ms  Effective feature num: " << effect_feat_num_
+                                 << " All num:" << scan_down_body_->size() << "  res_mean_last "
+                                 << res_mean_last << endl;
 #else
 #ifdef MP_EN
                             omp_set_num_threads(MP_PROC_NUM);
@@ -796,10 +752,8 @@ namespace faster_lio {
 
 //                            solve_start = omp_get_wtime(); // 迭代求解开始
                             auto solve_start = std::chrono::high_resolution_clock::now();
-
                             /*** Computation of Measuremnt Jacobian matrix H and measurents vector ***/
                             // TODO: 0215更新IESKF迭代求解过程 在迭代过程中引入平面和点的不确定性
-//                            MatrixXd H_x(effect_feat_num_, 12);
                             MatrixXd Hsub(effect_feat_num_, 6); // note: 其他列为0
                             VectorXd meas_vec(effect_feat_num_);
 #ifdef USE_VOXEL_OCTREE
@@ -826,23 +780,12 @@ namespace faster_lio {
                                 point_crossmat << SKEW_SYM_MATRIX(point_this);
                                 const PointType &norm_p = corr_normvect->points[i];
                                 V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
-//                                point_this += lidar_T_wrt_IMU; // NOTE：配置参数中雷达和imu的相对旋转为单位阵
                                 V3D point_world = state.rot_end * point_this + state.pos_end;
                                 Eigen::Matrix<double, 1, 6> J_nq;
                                 J_nq.block<1, 3>(0, 0) = point_world - ptpl_list[i].center; // 论文中公式(13)
                                 J_nq.block<1, 3>(0, 3) = -ptpl_list[i].normal;
                                 double sigma_l = J_nq * ptpl_list[i].plane_cov * J_nq.transpose(); // 公式(11) 噪声部分
                                 R_inv(i) = 1.0 / (sigma_l + norm_vec.transpose() * cov * norm_vec);
-                                double ranging_dis = point_this.norm();
-                                // TODO: 更新引入点的噪声模型的一些点的属性信息，作者回复这些更新没有什么用
-//                                laserCloudOri->points[i].intensity = sqrt(R_inv(i));
-//                                // 表示给定点所在样本曲面上的法线方向
-//                                laserCloudOri->points[i].normal_x = corr_normvect->points[i].intensity; // point-to-plane dist
-//                                laserCloudOri->points[i].normal_y = sqrt(sigma_l);
-//                                laserCloudOri->points[i].normal_z = sqrt(norm_vec.transpose() * cov * norm_vec);
-//                                // 曲率值
-//                                laserCloudOri->points[i].curvature = sqrt(
-//                                        sigma_l + norm_vec.transpose() * cov * norm_vec);
                                 /*** calculate the Measuremnt Jacobian matrix H ***/
                                 V3D A(point_crossmat * state.rot_end.transpose() * norm_vec); // 公式(50)
                                 Hsub.row(i) << VEC_FROM_ARRAY(A), norm_p.x, norm_p.y, norm_p.z;
@@ -912,15 +855,6 @@ namespace faster_lio {
                                 auto vec = state_propagat - state; // error
                                 solution = K * meas_vec + vec - K * Hsub * vec.block<6, 1>(0, 0);
 #endif
-
-//                                if (false)//if(V.minCoeff(&minRow, &minCol) < 1.0f)
-//                                {
-//                                    VD(6)
-//                                            V = H_T_H.block<6, 6>(0, 0).eigenvalues().real();
-//                                    cout << "!!!!!! Degeneration Happend, eigen values: " << V.transpose() << endl;
-//                                    EKF_stop_flg_ = true;
-//                                    solution.block<6, 1>(9, 0).setZero();
-//                                }
                                 state += solution;
                                 rot_add = solution.block<3, 1>(0, 0);
                                 t_add = solution.block<3, 1>(3, 0);
@@ -972,20 +906,16 @@ namespace faster_lio {
                                     solve_end - solve_start)
                                                   .count() *
                                           1000;
-                            cout << "solve_end && time: " << solve_time << endl;
 
                             if (EKF_stop_flg_) break;
                         }
                     }
                 },
                 "lidar IEKF");
-
-        // debug
-        cout << "[ mapping ]: iteration count: " << iterCount + 1 << endl;
 #endif
 
-        double t_update_end = omp_get_wtime();
-
+        // TODO:保存tum格式的轨迹数据
+//        SaveTrajTUM(LidarMeasures_.lidar_beg_time_, state.rot_end, state.pos_end);
         /******* Publish odometry *******/
         if (pub_odom_aft_mapped_) {
             euler_cur_ = RotMtoEuler(state.rot_end);
@@ -1003,41 +933,18 @@ namespace faster_lio {
         /*** add the  points to the voxel map ***/
         auto map_incremental_start = std::chrono::high_resolution_clock::now();
         Timer::Evaluate([&, this]() {
-            pcl::PointCloud<pcl::PointXYZINormal>::Ptr world_lidar(new pcl::PointCloud<pcl::PointXYZINormal>);
-            transformLidar(state, p_imu_, scan_down_body_, world_lidar);
-            std::vector<pointWithCov> pv_list;
-            for (size_t i = 0; i < world_lidar->size(); ++i) {
-                pointWithCov pv;
-                pv.point << world_lidar->points[i].x, world_lidar->points[i].y, world_lidar->points[i].z;
-                M3D point_crossmat = crossmat_list[i];
-                M3D cov = body_var[i];
-                cov = state.rot_end * cov * state.rot_end.transpose() +
-                      state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) * (-point_crossmat.transpose()) *
-                      state.rot_end.transpose() + state.cov.block<3, 3>(3, 3); // 公式3
-                pv.cov = cov;
-                pv_list.push_back(pv);
-            }
-            // var_contrast:return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
-            std::sort(pv_list.begin(), pv_list.end(), var_contrast);
-            cout << "pre UpdateVoxelMap" << endl;
-            updateVoxelMap(pv_list, max_voxel_size, max_layer, layer_size, max_points_size, max_points_size,
-                           min_eigen_value, voxel_map);
-            cout << "end of UpdateVoxelMap" << endl;
-        }, "    Incremental Mapping");
+            MapIncremental(crossmat_list, body_var);
+        }, "Incremental Mapping");
 
         auto map_incremental_end = std::chrono::high_resolution_clock::now();
         map_incremental_time = std::chrono::duration_cast<std::chrono::duration<double>>(
                 map_incremental_end - map_incremental_start).count() * 1000;
 #endif
+
         total_time =
                 t_downsample + match_time + solve_time + map_incremental_time + undistort_time + calc_point_cov_time +
                 t_visual;
 
-
-        // publish or save map pcd
-        if (path_pub_en_ || path_save_en_) {
-            PublishPath(pub_path_);
-        }
         /******* Publish points *******/
         PointCloudType::Ptr laserCloudFullRes(dense_map_en ? scan_undistort_ : scan_down_world_);
         int size = laserCloudFullRes->points.size();
@@ -1047,14 +954,19 @@ namespace faster_lio {
             RGBpointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
         }
         *pcl_wait_pub_ = *laserCloudWorld;
+
         if (scan_pub_en_ || pcd_save_en_) {
             PublishFrameWorld();
         }
-        if (scan_pub_en_ && scan_body_pub_en_) {
-            PublishFrameBody(pub_laser_cloud_body_);
-        }
+//        if (scan_pub_en_ && scan_body_pub_en_) {
+//            PublishFrameBody(pub_laser_cloud_body_);
+//        }
         if (scan_pub_en_ && scan_effect_pub_en_) {
             PublishFrameEffectWorld(pub_laser_cloud_effect_world_);
+        }
+        // publish or save map pcd
+        if (path_pub_en_ || path_save_en_) {
+            PublishPath(pub_path_);
         }
 #ifdef USE_VOXEL_OCTREE
         if (publish_voxel_map) {
@@ -1163,15 +1075,13 @@ namespace faster_lio {
                         LOG(WARNING) << "lidar loop back, clear buffer";
                         lidar_buffer_.clear();
                     }
-
                     // if time_sync_en = false && last_timestamp_imu_ - last_timestamp_lidar_ > 10.0 && imu_buffer_不空 && lidar_buffer不空
 //                    // TODO:补充手动给imu和lidar时间差的处理
-//                    if (!time_sync_en_ && abs(last_timestamp_imu_ - last_timestamp_lidar_) > 10.0 &&
-//                        !imu_buffer_.empty() &&
-//                        !lidar_buffer_.empty()) {
-//                        LOG(INFO) << "IMU and LiDAR not Synced, IMU time: " << last_timestamp_imu_
-//                                  << ", lidar header time: " << last_timestamp_lidar_;
-//                    }
+                    if (!time_sync_en_ && abs(last_timestamp_imu_ - last_timestamp_lidar_) > 10.0 &&
+                        !imu_buffer_.empty() && !lidar_buffer_.empty()) {
+                        LOG(INFO) << "IMU and LiDAR not Synced, IMU time: " << last_timestamp_imu_
+                                  << ", lidar header time: " << last_timestamp_lidar_;
+                    }
 //
 //                    if (time_sync_en_ && !timediff_set_flg_ && abs(last_timestamp_lidar_ - last_timestamp_imu_) > 1 &&
 //                        !imu_buffer_.empty()) {
@@ -1443,6 +1353,37 @@ namespace faster_lio {
                 "    IVox Add Points");
     }
 
+    void LaserMapping::MapIncremental(std::vector<M3D> crossmat_list, std::vector<M3D> body_var) {
+        pcl::PointCloud<pcl::PointXYZINormal>::Ptr world_lidar(new pcl::PointCloud<pcl::PointXYZINormal>);
+        transformLidar(state, p_imu_, scan_down_body_, world_lidar);
+        std::vector<pointWithCov> pv_list;
+//#ifdef MP_EN
+//        omp_set_num_threads(MP_PROC_NUM); // 4
+//#pragma omp parallel
+//#endif
+//#pragma omp for ordered
+        for (size_t i = 0; i < world_lidar->size(); ++i) {
+            pointWithCov pv;
+//#pragma omp ordered
+            pv.point << world_lidar->points[i].x, world_lidar->points[i].y, world_lidar->points[i].z;
+            M3D point_crossmat = crossmat_list[i];
+            M3D cov = body_var[i];
+            cov = state.rot_end * cov * state.rot_end.transpose() +
+                  state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) * (-point_crossmat.transpose()) *
+                  state.rot_end.transpose() + state.cov.block<3, 3>(3, 3); // 公式3
+            pv.cov = cov;
+            pv_list.push_back(pv);
+        }
+        // var_contrast:return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
+        std::sort(pv_list.begin(), pv_list.end(), var_contrast);
+        Timer::Evaluate(
+                [&, this]() {
+                    updateVoxelMap(pv_list, max_voxel_size, max_layer, layer_size, max_points_size, max_points_size,
+                                   min_eigen_value, voxel_map);
+                },
+                "update Voxel Map");
+    }
+
 /**
  * Lidar point cloud registration
  * will be called by the eskf custom observation model
@@ -1607,30 +1548,22 @@ namespace faster_lio {
 
     void LaserMapping::PublishOdometry(const ros::Publisher &pub_odom_aft_mapped) {
         odom_aft_mapped_.header.frame_id = "camera_init";
-//        odom_aft_mapped_.child_frame_id = "aft_mapped";
-        odom_aft_mapped_.child_frame_id = "body";
+        odom_aft_mapped_.child_frame_id = "aft_mapped";
         odom_aft_mapped_.header.stamp = ros::Time::now();  // ros::Time().fromSec(lidar_end_time_);
         SetPosestamp(odom_aft_mapped_.pose);
-        pub_odom_aft_mapped.publish(odom_aft_mapped_);
 
         static tf::TransformBroadcaster br;
         tf::Transform transform;
         tf::Quaternion q;
-        transform.setOrigin(tf::Vector3(odom_aft_mapped_.pose.pose.position.x, odom_aft_mapped_.pose.pose.position.y,
-                                        odom_aft_mapped_.pose.pose.position.z));
-        q.setW(odom_aft_mapped_.pose.pose.orientation.w);
-        q.setX(odom_aft_mapped_.pose.pose.orientation.x);
-        q.setY(odom_aft_mapped_.pose.pose.orientation.y);
-        q.setZ(odom_aft_mapped_.pose.pose.orientation.z);
-//        transform.setOrigin(tf::Vector3(state.pos_end(0), state.pos_end(1), state.pos_end(2)));
-//        q.setW(geoQuat.w);
-//        q.setX(geoQuat.x);
-//        q.setY(geoQuat.y);
-//        q.setZ(geoQuat.z);
+        transform.setOrigin(tf::Vector3(state.pos_end(0), state.pos_end(1), state.pos_end(2)));
+        q.setW(geoQuat.w);
+        q.setX(geoQuat.x);
+        q.setY(geoQuat.y);
+        q.setZ(geoQuat.z);
         transform.setRotation(q);
-//        br.sendTransform(tf::StampedTransform(transform, odom_aft_mapped_.header.stamp, "camera_init", "aft_mapped"));
-        br.sendTransform(tf::StampedTransform(transform, odom_aft_mapped_.header.stamp, "camera_init", "body"));
+        br.sendTransform(tf::StampedTransform(transform, odom_aft_mapped_.header.stamp, "camera_init", "aft_mapped"));
 
+        pub_odom_aft_mapped.publish(odom_aft_mapped_);
     }
 
     void LaserMapping::publish_odom_euler(const ros::Publisher &pubEuler) {
@@ -1660,18 +1593,6 @@ namespace faster_lio {
         }
         uint size = pcl_wait_pub_->points.size();
 
-//        PointCloudType::Ptr laserCloudWorld;
-//        if (dense_pub_en_) {
-//            PointCloudType::Ptr laserCloudFullRes(scan_undistort_);
-//            int size = laserCloudFullRes->points.size();
-//            laserCloudWorld.reset(new PointCloudType(size, 1));
-//            for (int i = 0; i < size; i++) {
-//                PointBodyToWorld(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
-//            }
-//        } else {
-//            laserCloudWorld = scan_down_world_;
-//        }
-
         if (!run_in_offline_ && scan_pub_en_) {
             sensor_msgs::PointCloud2 laserCloudmsg;
             pcl::toROSMsg(*pcl_wait_pub_, laserCloudmsg);
@@ -1680,7 +1601,6 @@ namespace faster_lio {
             pub_laser_cloud_world_.publish(laserCloudmsg);
             publish_count_ -= options::PUBFRAME_PERIOD;
         }
-
         /**************** save map ****************/
         /* 1. make sure you have enough memories
         /* 2. noted that pcd save will influence the real-time performences **/
@@ -1730,18 +1650,6 @@ namespace faster_lio {
         laserCloudFullRes3.header.frame_id = "camera_init";
         pubLaserCloudEffect.publish(laserCloudFullRes3);
         publish_count_ -= options::PUBFRAME_PERIOD;
-//        int size = corr_pts_.size();
-//        PointCloudType::Ptr laser_cloud(new PointCloudType(size, 1));
-//
-//        for (int i = 0; i < size; i++) {
-//            PointBodyToWorld(corr_pts_[i].head<3>(), &laser_cloud->points[i]);
-//        }
-//        sensor_msgs::PointCloud2 laserCloudmsg;
-//        pcl::toROSMsg(*laser_cloud, laserCloudmsg);
-//        laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time_);
-//        laserCloudmsg.header.frame_id = "camera_init";
-//        pub_laser_cloud_effect_world.publish(laserCloudmsg);
-//        publish_count_ -= options::PUBFRAME_PERIOD;
     }
 
     void LaserMapping::publish_frame_world_rgb(const ros::Publisher &pubLaserCloudFullRes,
@@ -1807,7 +1715,7 @@ namespace faster_lio {
     }
 
     void LaserMapping::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
-                             const int point_skip) {
+                                           const int point_skip) {
         PointCloudType::Ptr laserCloudFullRes(dense_map_en ? scan_undistort_ : scan_down_body_);
         int size = laserCloudFullRes->points.size();
         PointCloudType::Ptr laserCloudWorld(new PointCloudType(size, 1));
@@ -1855,6 +1763,7 @@ namespace faster_lio {
         pubLaserCloudEffect.publish(laserCloudFullRes3);
     }
 
+    /** 保存轨迹到txt,格式：TUM **/
     void LaserMapping::Savetrajectory(const std::string &traj_file) {
         std::ofstream ofs;
         ofs.open(traj_file, std::ios::out);
@@ -1867,9 +1776,8 @@ namespace faster_lio {
         for (const auto &p: path_.poses) {
             ofs << std::fixed << std::setprecision(6) << p.header.stamp.toSec() << " " << std::setprecision(15)
                 << p.pose.position.x << " " << p.pose.position.y << " " << p.pose.position.z << " "
-                << p.pose.orientation.x
-                << " " << p.pose.orientation.y << " " << p.pose.orientation.z << " " << p.pose.orientation.w
-                << std::endl;
+                << p.pose.orientation.x << " " << p.pose.orientation.y << " " << p.pose.orientation.z << " "
+                << p.pose.orientation.w << std::endl;
         }
 
         ofs.close();
@@ -1995,5 +1903,36 @@ namespace faster_lio {
         LOG(INFO) << "finish done";
     }
 
+// TODO:0403 将计算世界坐标系下点的协方差模块化
+    void LaserMapping::calcPointcov(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &world_lidar_, CloudPtr scan_undistort,
+                                    std::vector<pointWithCov> pv_list) {
+        for (size_t i = 0; i < world_lidar_->size(); ++i) {
+            pointWithCov pv;
+            pv.point << world_lidar_->points[i].x, world_lidar_->points[i].y, world_lidar_->points[i].z;
+            V3D point_this(scan_undistort->points[i].x, scan_undistort->points[i].y,
+                           scan_undistort->points[i].z);
+            // if z=0, error will occur in calcBodyCov. To be solved
+            if (point_this[2] == 0)
+                point_this[2] = 0.001;
 
+            // TODO:0301坐标系问题
+            point_this = lidar_R_wrt_IMU * point_this + lidar_T_wrt_IMU;
+            M3D point_crossmat; // 斜对角矩阵
+            point_crossmat << SKEW_SYM_MATRIX(point_this);
+            M3D cov;
+            calcBodyCov(point_this, ranging_cov, angle_cov, cov);
+            // TODO:按照论文中公式（3）修改cov计算
+            cov = state.rot_end * cov * state.rot_end.transpose() +
+                  state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) *
+                  (-point_crossmat).transpose() * state.rot_end.transpose() +
+                  state.cov.block<3, 3>(3, 3);
+            pv.cov = cov;
+            pv_list.push_back(pv);
+            // todo:sigma_pv没用到
+//            Eigen::Vector3d sigma_pv = pv.cov.diagonal();
+//            sigma_pv[0] = sqrt(sigma_pv[0]);
+//            sigma_pv[1] = sqrt(sigma_pv[1]);
+//            sigma_pv[2] = sqrt(sigma_pv[2]);
+        }
+    }
 }  // namespace faster_lio

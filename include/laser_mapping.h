@@ -106,6 +106,10 @@ namespace faster_lio {
 
         void Finish();
 
+        void calcPointcov(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &world_lidar_, CloudPtr scan_undistort_,
+                          std::vector<pointWithCov> pv_list);
+        void MapIncremental(std::vector<M3D> crossmat_list, std::vector<M3D> body_var);
+
         static bool var_contrast(pointWithCov &x, pointWithCov &y) {
             return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
         }
@@ -256,6 +260,7 @@ namespace faster_lio {
         // params for publish function
         bool publish_voxel_map = false;
         int publish_max_voxel_layer = 0;
+        int publish_only_voxel_layer = 0;
         bool publish_point_cloud = false;
         int pub_point_cloud_skip = 1;
 
