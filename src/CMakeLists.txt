@@ -3,7 +3,7 @@ add_library(${PROJECT_NAME}
         pointcloud_preprocess.cc
         options.cc
         utils.cc
-        ../include/tools.hpp ../include/inital_aligment.hpp ../include/lidar_selection.h ../include/frame.h ../include/point.h ../include/feature.h ../include/map.h lidar_selection.cpp frame.cpp point.cpp map.cpp ../include/voxel_octree_map/voxel_map_util.hpp)
+        ../include/tools.hpp ../include/inital_aligment.hpp ../include/lidar_selection.h ../include/frame.h ../include/point.h ../include/feature.h ../include/map.h lidar_selection.cpp frame.cpp point.cpp map.cpp ../include/voxel_octree_map/voxel_map_util.hpp ../include/std_detector/STDesc.h models/STDesc.cpp)
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencpp livox_ros_driver_gencpp)
 
@@ -11,9 +11,11 @@ target_link_libraries(${PROJECT_NAME}
         ${catkin_LIBRARIES}
         ${PCL_LIBRARIES}
         ${PYTHON_LIBRARIES}
+        ${CERES_LIBRARIES}
         tbb
         glog
         yaml-cpp
+        gtsam
         )
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${PYTHON_INCLUDE_DIRS})

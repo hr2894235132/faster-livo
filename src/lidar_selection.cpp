@@ -744,6 +744,7 @@ namespace faster_lio {
 
         void LidarSelector::detect(cv::Mat img, PointCloudType::Ptr pg) {
             if (width != img.cols || height != img.rows) {
+                std::cout << "cols: " << img.cols << "rows:" << img.rows << std::endl;
                 std::cout << "Resize the img scale !!!" << std::endl;
                 double scale = 0.5;
                 cv::resize(img, img, cv::Size(img.cols * scale, img.rows * scale), 0, 0, CV_INTER_LINEAR);

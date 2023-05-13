@@ -78,6 +78,12 @@ namespace faster_lio {
         else
             std::cout << "~~~~" << ROOT_DIR << " doesn't exist" << std::endl;
 
+        // TODO:0420 保存bag文件
+        if (write_rosbag) {
+            save_pose_file.open(pose_file);
+            bag.open(bag_file, rosbag::bagmode::Write);
+        }
+
         // todo:12.8 新增视觉相关参数
         nh.param<int>("dense_map_enable", dense_map_en, 1);
         nh.param<int>("img_enable", img_en, 1);
@@ -276,7 +282,6 @@ namespace faster_lio {
                                                     [this](const sensor_msgs::ImageConstPtr &msg) {
                                                         IMGCallBack(msg);
                                                     });
-//        sub_img_ = nh.subscribe(img_topic, 200000, IMGCallBack);
 
         // ROS publisher init
         path_.header.stamp = ros::Time::now();
@@ -297,7 +302,7 @@ namespace faster_lio {
 
         // TODO：更新成livo pubLaserCloudFullRes
         pub_laser_cloud_world_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100);
-        pub_laser_cloud_body_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100);
+        pub_laser_cloud_body_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
         // TODO：更新成livo pubLaserCloudEffect
         pub_laser_cloud_effect_world_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_effect_world",
                                                                                100);
@@ -326,13 +331,14 @@ namespace faster_lio {
             flg_reset_ = false;
             return;
         }
-        std::cout << "scan_Idx: " << scanIdx << std::endl;
+        printf("Scan_Index: %d\n", scanIdx);
         double t0, t1, t2, t3, t4, t5, match_start, solve_start;
         match_time = solve_time = solve_const_H_time = 0;
         t0 = omp_get_wtime();
-        /// IMU process, kf prediction, undistortion
-        // IMU数据初始化，初始化完成后进入去畸变函数
-        // 去畸变函数中，利用IMU数据对kf_状态进行前向传播，同时对点云进行去畸变，得到scan_undistort_（lidar系）
+        /* IMU process, kf prediction, undistortion */
+        /* IMU数据初始化，初始化完成后进入去畸变函数
+         * 去畸变函数中，利用IMU数据对kf_状态进行前向传播，同时对点云进行去畸变，得到scan_undistort_（lidar系）
+         */
 #ifdef USE_IKFOM
         p_imu_->Process(measures_, kf_, scan_undistort_);
         // TODO:12.1 hr 获取kf预测的全局状态（imu）
@@ -344,7 +350,7 @@ namespace faster_lio {
                 [&, this]() {
                     p_imu_->Process2(LidarMeasures_, state, scan_undistort_);
                 },
-                "Undistort PointCloud");
+                "IMU forward && backward");
         auto undistort_end = std::chrono::high_resolution_clock::now();
         auto undistort_time =
                 std::chrono::duration_cast<std::chrono::duration<double >>(undistort_end - undistort_start).count() *
@@ -373,6 +379,7 @@ namespace faster_lio {
             LidarMeasures_.debug_show();
         }
 
+        int scan_undistort_size;
         if (scan_undistort_->empty() || (scan_undistort_ == nullptr)) {
             LOG(WARNING) << "No point, skip this scan!";
             if (!fast_lio_is_ready) {
@@ -383,7 +390,7 @@ namespace faster_lio {
                 return;
             }
         } else {
-            int size = scan_undistort_->points.size();
+            scan_undistort_size = static_cast<int>(scan_undistort_->points.size());
         }
         fast_lio_is_ready = true;
 
@@ -419,7 +426,7 @@ namespace faster_lio {
         }
 #endif
 
-        /* TODO:12.14 视觉部分迭代优化 */
+        /* 12.14 视觉部分迭代优化 */
         auto t_visual_start = std::chrono::high_resolution_clock::now();
         Timer::Evaluate(
                 [&, this]() {
@@ -458,7 +465,7 @@ namespace faster_lio {
 
                             geoQuat = tf::createQuaternionMsgFromRollPitchYaw(euler_cur_(0), euler_cur_(1),
                                                                               euler_cur_(2));
-                            PublishOdometry(pub_odom_aft_mapped_);
+//                            PublishOdometry(pub_odom_aft_mapped_);
                             euler_cur_ = RotMtoEuler(state.rot_end);
                             fout_out << setw(20) << LidarMeasures_.last_update_time_ - first_lidar_time_ << " "
                                      << euler_cur_.transpose() * 57.3 << " " << state.pos_end.transpose() << " "
@@ -474,7 +481,7 @@ namespace faster_lio {
         auto t_visual =
                 std::chrono::duration_cast<std::chrono::duration<double>>(t_visual_end - t_visual_start).count() * 1000;
 
-        /// downsample the feature points in a scan
+        /* downsample the feature points in a scan */
         auto t_downsample_start = std::chrono::high_resolution_clock::now();
         Timer::Evaluate(
                 [&, this]() {
@@ -485,14 +492,13 @@ namespace faster_lio {
         auto t_downsample_end = std::chrono::high_resolution_clock::now();
         auto t_downsample = std::chrono::duration_cast<std::chrono::duration<double>>(
                 t_downsample_end - t_downsample_start).count() * 1000;
-        int cur_pts = scan_down_body_->points.size();
-        cout << "[ LIO ]: Raw feature num: " << scan_undistort_->points.size() << " downsamp num " << cur_pts << "."
-             << endl;
+
+        int cur_pts = static_cast<int>(scan_down_body_->points.size());
+        printf("[ LIO ]: Raw feature num: %d  downsamp num: %d\n", scan_undistort_size, cur_pts);
         // TODO: 按曲率排序点云
         sort(scan_down_body_->points.begin(), scan_down_body_->points.end(), time_list);
-
         if (cur_pts < 5) {
-            LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_->points.size() << ", "
+            LOG(WARNING) << "Too few points, skip this scan!" << scan_undistort_size << ", "
                          << scan_down_body_->points.size();
             return;
         }
@@ -505,7 +511,6 @@ namespace faster_lio {
         plane_coef_.resize(cur_pts, V4F::Zero());
         normvec->resize(cur_pts);
 #endif
-
         t1 = omp_get_wtime();
         if (lidar_en) {
             // TODO：12.1 hr 打印状态信息
@@ -516,7 +521,6 @@ namespace faster_lio {
                      << state.bias_a.transpose() << " ! " << state.gravity.transpose() << std::endl;
 
         }
-
         int rematch_num = 0;
         bool nearest_search_en = true;
         t2 = omp_get_wtime();
@@ -550,15 +554,13 @@ namespace faster_lio {
                 },
                 "IEKF Solve and Update");
 #else
-
         double calc_point_cov_time;
         std::vector<M3D> body_var; // 存点的cov
         std::vector<M3D> crossmat_list; // 存协方差矩阵
-
+        /** lidar IEKF **/
         Timer::Evaluate(
                 [&, this]() {
                     if (lidar_en) {
-                        /** lidar IEKF **/
 #ifdef USE_VOXEL_OCTREE
                         /* TODO:0214 加入计算雷达点的协方差的过程 */
                         auto calc_point_cov_start = std::chrono::high_resolution_clock::now();
@@ -930,6 +932,26 @@ namespace faster_lio {
         LOG(INFO) << "[ mapping ]: In num: " << scan_undistort_->points.size() << " downsamp " << cur_pts
                   << " Map grid num: " << ivox_->NumValidGrids() << " effect num : " << effect_feat_num_;
 #else
+        if (write_rosbag) {
+            if (!scan_undistort_->empty()) {
+                ros::Time current_time = ros::Time().fromSec(LidarMeasures_.lidar_beg_time_);
+                sensor_msgs::PointCloud2 save_cloud;
+                pcl::toROSMsg(*scan_undistort_, save_cloud);
+                save_cloud.header.frame_id = "camera_init";
+                save_cloud.header.stamp = current_time;
+                std::cout << "save frame:" << save_frame_num
+                          << ", cloud size:" << scan_undistort_->size() << std::endl;
+                bag.write("/cloud_undistort", current_time, save_cloud);
+                save_frame_num++;
+                Eigen::Quaterniond current_q(state.rot_end);
+                double timestamp = current_time.toSec();
+                save_pose_file << fixed << setprecision(6) << timestamp << " "
+                               << setprecision(7) << state.pos_end(0) << " "
+                               << state.pos_end(1) << " " << state.pos_end(2)
+                               << " " << current_q.x() << " " << current_q.y() << " "
+                               << current_q.z() << " " << current_q.w() << std::endl;
+            }
+        }
         /*** add the  points to the voxel map ***/
         auto map_incremental_start = std::chrono::high_resolution_clock::now();
         Timer::Evaluate([&, this]() {
@@ -958,9 +980,9 @@ namespace faster_lio {
         if (scan_pub_en_ || pcd_save_en_) {
             PublishFrameWorld();
         }
-//        if (scan_pub_en_ && scan_body_pub_en_) {
-//            PublishFrameBody(pub_laser_cloud_body_);
-//        }
+        if (scan_pub_en_ && scan_body_pub_en_) {
+            PublishFrameBody(pub_laser_cloud_body_);
+        }
         if (scan_pub_en_ && scan_effect_pub_en_) {
             PublishFrameEffectWorld(pub_laser_cloud_effect_world_);
         }
@@ -1270,11 +1292,6 @@ namespace faster_lio {
         return true;
     }
 
-//    void LaserMapping::PrintState(const state_ikfom &s) {
-//        LOG(INFO) << "state r: " << s.rot.coeffs().transpose() << ", t: " << s.pos.transpose()
-//                  << ", off r: " << s.offset_R_L_I.coeffs().transpose() << ", t: " << s.offset_T_L_I.transpose();
-//    }
-
     void LaserMapping::MapIncremental() {
         PointVector points_to_add;
         PointVector point_no_need_downsample;
@@ -1549,7 +1566,8 @@ namespace faster_lio {
     void LaserMapping::PublishOdometry(const ros::Publisher &pub_odom_aft_mapped) {
         odom_aft_mapped_.header.frame_id = "camera_init";
         odom_aft_mapped_.child_frame_id = "aft_mapped";
-        odom_aft_mapped_.header.stamp = ros::Time::now();  // ros::Time().fromSec(lidar_end_time_);
+//        odom_aft_mapped_.header.stamp = ros::Time::now();  // ros::Time().fromSec(lidar_end_time_);
+        odom_aft_mapped_.header.stamp = ros::Time().fromSec(lidar_end_time_);
         SetPosestamp(odom_aft_mapped_.pose);
 
         static tf::TransformBroadcaster br;
@@ -1644,6 +1662,22 @@ namespace faster_lio {
         for (int i = 0; i < effect_feat_num_; i++) {
             RGBpointBodyToWorld(&laserCloudOri->points[i], &laserCloudWorld->points[i]);
         }
+        /* save effect points */
+        /*pcl::PointCloud<pcl::PointXYZRGB>::Ptr effect_cloud_world(new pcl::PointCloud<pcl::PointXYZRGB>);
+        for (int i = 0; i < effect_feat_num_; i++) {
+            pcl::PointXYZRGB pi;
+            pi.x = laserCloudWorld->points[i].x;
+            pi.y = laserCloudWorld->points[i].y;
+            pi.z = laserCloudWorld->points[i].z;
+            float v = laserCloudWorld->points[i].intensity / 100;
+            v = 1.0 - v;
+            uint8_t r, g, b;
+            mapJet(v, 0, 1, r, g, b);
+            pi.r = r;
+            pi.g = g;
+            pi.b = b;
+            effect_cloud_world->points.push_back(pi);
+        }*/
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
         laserCloudFullRes3.header.stamp = ros::Time::now();//.fromSec(last_timestamp_lidar);
@@ -1712,55 +1746,6 @@ namespace faster_lio {
             publish_count -= options::PUBFRAME_PERIOD;
             // pcl_wait_pub->clear();
         }
-    }
-
-    void LaserMapping::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
-                                           const int point_skip) {
-        PointCloudType::Ptr laserCloudFullRes(dense_map_en ? scan_undistort_ : scan_down_body_);
-        int size = laserCloudFullRes->points.size();
-        PointCloudType::Ptr laserCloudWorld(new PointCloudType(size, 1));
-        for (int i = 0; i < size; i++) {
-            RGBpointBodyToWorld(&laserCloudFullRes->points[i],
-                                &laserCloudWorld->points[i]);
-        }
-        PointCloudType::Ptr laserCloudWorldPub(new PointCloudType);
-        for (int i = 0; i < size; i += point_skip) {
-            laserCloudWorldPub->points.push_back(laserCloudWorld->points[i]);
-        }
-        sensor_msgs::PointCloud2 laserCloudmsg;
-        pcl::toROSMsg(*laserCloudWorldPub, laserCloudmsg);
-        laserCloudmsg.header.stamp =
-                ros::Time::now(); //.fromSec(last_timestamp_lidar);
-        laserCloudmsg.header.frame_id = "camera_init";
-        pubLaserCloudFullRes.publish(laserCloudmsg);
-    }
-
-    void LaserMapping::publish_effect(const ros::Publisher &pubLaserCloudEffect) {
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr effect_cloud_world(
-                new pcl::PointCloud<pcl::PointXYZRGB>);
-        PointCloudType::Ptr laserCloudWorld(new PointCloudType(effect_feat_num_, 1));
-        for (int i = 0; i < effect_feat_num_; i++) {
-            RGBpointBodyToWorld(&laserCloudOri->points[i], &laserCloudWorld->points[i]);
-            pcl::PointXYZRGB pi;
-            pi.x = laserCloudWorld->points[i].x;
-            pi.y = laserCloudWorld->points[i].y;
-            pi.z = laserCloudWorld->points[i].z;
-            float v = laserCloudWorld->points[i].intensity / 100;
-            v = 1.0 - v;
-            uint8_t r, g, b;
-            mapJet(v, 0, 1, r, g, b);
-            pi.r = r;
-            pi.g = g;
-            pi.b = b;
-            effect_cloud_world->points.push_back(pi);
-        }
-
-        sensor_msgs::PointCloud2 laserCloudFullRes3;
-        pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
-        laserCloudFullRes3.header.stamp =
-                ros::Time::now(); //.fromSec(last_timestamp_lidar);
-        laserCloudFullRes3.header.frame_id = "camera_init";
-        pubLaserCloudEffect.publish(laserCloudFullRes3);
     }
 
     /** 保存轨迹到txt,格式：TUM **/
@@ -1834,7 +1819,6 @@ namespace faster_lio {
         po->intensity = std::abs(po->z);
     }
 
-    // todo:
     void LaserMapping::PointBodyLidarToIMU(PointType const *const pi, PointType *const po) {
         V3D p_body_lidar(pi->x, pi->y, pi->z);
         V3D p_body_imu(p_body_lidar + lidar_T_wrt_IMU);
@@ -1889,6 +1873,10 @@ namespace faster_lio {
     }
 
     void LaserMapping::Finish() {
+        if (write_rosbag) {
+            save_pose_file.close();
+            bag.close();
+        }
         /**************** save map ****************/
         /* 1. make sure you have enough memories
         /* 2. pcd save will largely influence the real-time performences **/

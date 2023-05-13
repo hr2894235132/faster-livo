@@ -42,6 +42,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 
 find_package(PythonLibs REQUIRED)
 find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
+#set(cv_bridge_DIR /home/hr/third_party/ws/devel/share/cv_bridge/cmake)
 
 find_package(catkin REQUIRED COMPONENTS
         geometry_msgs
@@ -83,9 +84,11 @@ catkin_package(
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(Ceres REQUIRED)
 FIND_PACKAGE(OpenCV REQUIRED)
 FIND_PACKAGE(Sophus REQUIRED)
 FIND_PACKAGE(Boost REQUIRED COMPONENTS thread)
+FIND_PACKAGE(GTSAM REQUIRED)
 set(Sophus_LIBRARIES libSophus.so)
 
 include_directories(
@@ -98,3 +101,4 @@ include_directories(
         ${Sophus_INCLUDE_DIRS}
         include
 )
+

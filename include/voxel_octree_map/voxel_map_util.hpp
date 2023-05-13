@@ -337,8 +337,6 @@ public:
                          plane->normal(2) * plane->center(2));
             plane->is_plane = false;
             plane->is_update = true;
-//            // TODO:0404更新平面所在层数
-//            plane->layer = layer_;
         }
     }
 
@@ -357,9 +355,6 @@ public:
                 octo_state_ = 1;
                 cut_octo_tree(); //继续细分
             }
-//            // TODO:0404更新平面所在层数
-//            plane_ptr_->layer = layer_;
-
             init_octo_ = true;
             new_points_num_ = 0;
         }
@@ -622,6 +617,7 @@ void updateVoxelMap(const std::vector<pointWithCov> &input_points, const float v
     }
 }
 
+
 void build_single_residual(const pointWithCov &pv, const OctoTree *current_octo, const int current_layer,
                            const int max_layer, const double sigma_num, bool &is_success, double &prob,
                            pTpl &single_ptpl) {
@@ -629,9 +625,6 @@ void build_single_residual(const pointWithCov &pv, const OctoTree *current_octo,
     Eigen::Vector3d p_w = pv.point_world;
     if (current_octo->plane_ptr_->is_plane) {
         Plane &plane = *current_octo->plane_ptr_;
-        Eigen::Vector3d p_world_to_center = p_w - plane.center;
-        double proj_x = p_world_to_center.dot(plane.x_normal);
-        double proj_y = p_world_to_center.dot(plane.y_normal);
         float dist_to_plane = fabs(
                 plane.normal[0] * p_w(0) + plane.normal[1] * p_w(1) + plane.normal[2] * p_w(2) + plane.d);
         float dist_to_center = (plane.center(0) - p_w(0)) * (plane.center(0) - p_w(0)) +
@@ -677,6 +670,14 @@ void build_single_residual(const pointWithCov &pv, const OctoTree *current_octo,
                                           single_ptpl);
                 }
             }
+//            for (size_t leafnum = 0; leafnum < 8; leafnum++) {
+//                if (current_octo->leaves_[leafnum] != nullptr) {
+//
+//                    OctoTree *leaf_octo = current_octo->leaves_[leafnum];
+//                    build_single_residual(pv, leaf_octo, current_layer + 1, max_layer,
+//                                          sigma_num, is_success, prob, single_ptpl);
+//                }
+//            }
             return;
         } else {
             return;
@@ -689,7 +690,7 @@ void BuildResidualListOMP(const unordered_map<VOXEL_LOC, OctoTree *> &voxel_map,
                           std::vector<pTpl> &ptpl_list, std::vector<Eigen::Vector3d> &non_match) {
     std::mutex mylock;
     ptpl_list.clear();
-    cout << "size!!!!" << pv_list.size() << endl;
+//    cout << "size!!!!" << pv_list.size() << endl;
     std::vector<pTpl> all_ptpl_list(pv_list.size());
     std::vector<bool> useful_ptpl(pv_list.size());
     std::vector<size_t> index(pv_list.size());
@@ -778,6 +779,12 @@ void GetUpdatePlane(const OctoTree *current_octo, const int pub_max_voxel_layer,
                     GetUpdatePlane(leave, pub_max_voxel_layer, plane_list);
                 }
             }
+//            for (size_t i = 0; i < 8; i++) {
+//                if (current_octo->leaves_[i] != nullptr) {
+//                    GetUpdatePlane(current_octo->leaves_[i], pub_max_voxel_layer,
+//                                   plane_list);
+//                }
+//            }
         }
     }
 }
@@ -867,11 +874,13 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
     double pow_num = 0.2;
     ros::Rate loop(500);
     float use_alpha = 0.8;
-    visualization_msgs::MarkerArray voxel_plane0, voxel_plane1, voxel_plane2, voxel_plane3;
+    visualization_msgs::MarkerArray voxel_plane0, voxel_plane1, voxel_plane2, voxel_plane3, voxel_plane4, voxel_plane5;
     voxel_plane0.markers.reserve(1000000);
     voxel_plane1.markers.reserve(1000000);
     voxel_plane2.markers.reserve(1000000);
     voxel_plane3.markers.reserve(1000000);
+    voxel_plane4.markers.reserve(1000000);
+    voxel_plane5.markers.reserve(1000000);
     std::vector<Plane> pub_plane_list;
     for (const auto &iter: voxel_map) {
         GetUpdatePlane(iter.second, pub_max_voxel_layer, pub_plane_list); // 得到pub_plane_list
@@ -888,6 +897,9 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
         mapJet(trace, 0, 1, r, g, b);
         Eigen::Vector3d plane_rgb(r / 256.0, g / 256.0, b / 256.0);
         float alpha;
+        if (p_list.layer >= 4) {
+            printf("p_list 's layer = %d\n", p_list.layer);
+        }
         // TODO：0406指定发布对应平面
         {
             if (p_list.layer == 0) {
@@ -937,12 +949,37 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
             }
             pubSinglePlane(voxel_plane3, "plane3", p_list, alpha, plane_rgb);
         }
-
+        {
+            if (p_list.layer == 4) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane4, "plane4", p_list, alpha, plane_rgb);
+        }
+        {
+            if (p_list.layer == 5) {
+                if (p_list.is_plane) {
+                    alpha = use_alpha;
+                } else {
+                    alpha = 0;
+                }
+            } else {
+                alpha = 0;
+            }
+            pubSinglePlane(voxel_plane5, "plane5", p_list, alpha, plane_rgb);
+        }
     }
     plane_map_pub.publish(voxel_plane0);
     plane_map_pub.publish(voxel_plane1);
     plane_map_pub.publish(voxel_plane2);
     plane_map_pub.publish(voxel_plane3);
+    plane_map_pub.publish(voxel_plane4);
+    plane_map_pub.publish(voxel_plane5);
     loop.sleep();
 }
 

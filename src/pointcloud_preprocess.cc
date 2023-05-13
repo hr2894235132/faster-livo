@@ -88,9 +88,10 @@ namespace faster_lio {
             if ((abs(msg->points[i].x - msg->points[i - 1].x) < 1e-8)
                 || (abs(msg->points[i].y - msg->points[i - 1].y) < 1e-8)
                 || (abs(msg->points[i].z - msg->points[i - 1].z) < 1e-8)
-                || (msg->points[i].x * msg->points[i].x + msg->points[i].y * msg->points[i].y < blind_)
+                || (msg->points[i].x * msg->points[i].x + msg->points[i].y * msg->points[i].y +
+                    msg->points[i].z * msg->points[i].z < (blind_ * blind_))
                 || (msg->points[i].line > num_scans_)
-                || ((msg->points[i].tag & 0x30) != RETURN0AND1)) {
+                || ((msg->points[i].tag & 0x30) != RETURN0AND1) && ((msg->points[i].tag & 0x30) != 0x00)) {
                 continue;
             }
 

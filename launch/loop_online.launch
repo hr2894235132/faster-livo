@@ -1,0 +1,17 @@
+<launch>
+    <!-- Launch file for Livox AVIA LiDAR -->
+
+    <arg name="rviz" default="true" />
+    <rosparam command="load" file="$(find faster_lio)/config/STD/config_mid70.yaml" />
+    <group if="$(arg rviz)">
+        <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find faster_lio)/rviz_cfg/online.rviz" />
+    </group>
+
+    <node
+            pkg="faster_lio"
+            type="run_loop_online"
+            name="run_loop_online"
+            output="screen"
+    />
+
+</launch>

@@ -359,6 +359,13 @@ namespace faster_lio {
         double ekf_solve_time_mean = 0;
         double map_update_time_mean = 0;
 
+        bool write_rosbag = true;
+        int save_frame_num = 0;
+        rosbag::Bag bag;
+        std::string bag_file = "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log/in_std.bag";
+        std::ofstream save_pose_file;
+        std::string pose_file = "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log/pose_file.txt";
+
     };
 
 }  // namespace faster_lio

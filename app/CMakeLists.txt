@@ -6,3 +6,7 @@ target_link_libraries(run_mapping_online
 #target_link_libraries(run_mapping_offline
 #        ${PROJECT_NAME} gflags
 #        )
+add_executable(run_loop_online run_loop_online.cpp)
+target_link_libraries(run_loop_online
+        ${PROJECT_NAME} gflags
+        )

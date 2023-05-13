@@ -55,9 +55,9 @@ publish:
   scan_publish_en: true       # false: close all the point cloud output
   scan_effect_pub_en: true    # true: publish the pointscloud of effect point
   dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
-  scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
+  scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
   # voxel
-  pub_voxel_map: true
+  pub_voxel_map: false
   publish_max_voxel_layer: 0         # 不再使用
   # publish_only_voxel_layer: 3        # only publish 0,1,2 layer's plane
   # pub_point_cloud: true
@@ -100,8 +100,8 @@ ivox_nearby_type: 18             # 6, 18, 26
 esti_plane_threshold: 0.1        # default=0.1
 
 voxel:
-    voxel_size: 3.0
-    max_layer: 4                # 4 layer, 0, 1, 2, 3
+    voxel_size: 3
+    max_layer: 4                 # 4 layer, 0, 1, 2, 3
     layer_point_size: [5, 5, 5, 5, 5]
     plannar_threshold: 0.01
     max_points_size: 1000
