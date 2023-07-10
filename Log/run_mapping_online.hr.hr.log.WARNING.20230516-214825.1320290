@@ -1,0 +1,34 @@
+Log file created at: 2023/05/16 21:48:25
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W0516 21:48:25.003062 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.102937 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.102972 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.103180 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.103379 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.103579 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.103778 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.103978 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.104197 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.104386 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.104584 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.104863 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.105005 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.105202 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.105401 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.105599 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.105896 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.106076 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.106238 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.202802 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.203730 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0
+W0516 21:48:25.203776 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.204691 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0
+W0516 21:48:25.204744 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.205914 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0
+W0516 21:48:25.205958 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.206863 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0
+W0516 21:48:25.206907 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.207895 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0
+W0516 21:48:25.207954 1320290 laser_mapping.cc:384] No point, skip this scan!
+W0516 21:48:25.208935 1320290 laser_mapping.cc:501] Too few points, skip this scan!-1646269920, 0

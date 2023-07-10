@@ -1,0 +1,11 @@
+Log file created at: 2023/06/29 16:16:48
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I0629 16:16:48.137712 97009 laser_mapping.cc:175] lidar_type 1
+I0629 16:16:48.137789 97009 laser_mapping.cc:178] Using AVIA Lidar
+I0629 16:16:48.323029 97009 run_mapping_online.cc:45] finishing mapping
+I0629 16:16:48.323169 97009 laser_mapping.cc:1891] finish done
+I0629 16:16:48.323179 97009 utils.h:54] >>> ===== Printing run time =====
+I0629 16:16:48.323182 97009 utils.h:62] >>> ===== Printing run time end =====
+I0629 16:16:48.323185 97009 run_mapping_online.cc:49] save trajectory to: /home/hr/workspace/faster_lio_ws/src/faster-lio/Log/traj.txt
+I0629 16:16:48.323274 97009 laser_mapping.h:53] laser mapping deconstruct

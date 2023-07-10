@@ -1,0 +1,6 @@
+Log file created at: 2023/06/25 15:52:09
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W0625 15:52:09.132198 339869 laser_mapping.cc:384] No point, skip this scan!
+W0625 15:52:09.156317 339869 laser_mapping.cc:384] No point, skip this scan!
+W0625 15:52:09.183130 339869 laser_mapping.cc:384] No point, skip this scan!
