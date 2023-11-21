@@ -31,11 +31,13 @@ static int plane_id = 0;
 // 点到面对匹配结构
 typedef struct pTpl {
     Eigen::Vector3d point; // point coordinates
+    Eigen::Vector3d point_world;
     Eigen::Vector3d normal; // plane normal
     Eigen::Vector3d center; // center of plane
     Eigen::Matrix<double, 6, 6> plane_cov; // cov of plane
     double d;
     int layer; // layer of octo_tree
+    Eigen::Matrix3d cov_lidar;
 } pTpl;
 
 // 带有协方差信息的3D点云
@@ -43,6 +45,7 @@ typedef struct pointWithCov {
     Eigen::Vector3d point;
     Eigen::Vector3d point_world;
     Eigen::Matrix3d cov;
+    Eigen::Matrix3d cov_lidar;
 } pointWithCov;
 
 // plane
@@ -553,12 +556,12 @@ void buildVoxelMap(const std::vector<pointWithCov> &input_points, const float vo
     uint pl_size = input_points.size();
     /* save points into Octo_tree */
     for (uint i = 0; i < pl_size; ++i) {
-        // TODO:0210 p_v 从const 改为 const&；
+        // hr 0210 p_v 从const 改为 const&；
         const pointWithCov &p_v = input_points[i];
         float loc_xyz[3];
         for (int j = 0; j < 3; ++j) {
             loc_xyz[j] = p_v.point[j] / voxel_size;
-            if (loc_xyz[j] < 0) loc_xyz[j] -= 1.0; // todo: 0.1和-0.1取整后会在一个voxel内，故减1
+            if (loc_xyz[j] < 0) loc_xyz[j] -= 1.0; // hr 0.1和-0.1取整后会在一个voxel内，故减1
         }
         VOXEL_LOC position((int64_t) loc_xyz[0], (int64_t) loc_xyz[1], (int64_t) loc_xyz[2]);
         auto iter = feat_map.find(position);
@@ -572,7 +575,7 @@ void buildVoxelMap(const std::vector<pointWithCov> &input_points, const float vo
             feat_map[position] = octoTree;
             feat_map[position]->quater_length_ = voxel_size / 4;
             feat_map[position]->voxel_center_[0] =
-                    (0.5 + (double) position.x) * voxel_size; // TODO:0210 将int64_t强转为double
+                    (0.5 + (double) position.x) * voxel_size; // hr 0210 将int64_t强转为double
             feat_map[position]->voxel_center_[1] =
                     (0.5 + (double) position.y) * voxel_size; // voxel center coordinate in the world frame
             feat_map[position]->voxel_center_[2] = (0.5 + (double) position.z) * voxel_size;
@@ -647,11 +650,15 @@ void build_single_residual(const pointWithCov &pv, const OctoTree *current_octo,
                 if (this_prob > prob) {
                     prob = this_prob;
                     single_ptpl.point = pv.point;
+                    // hr 11.21
+                    single_ptpl.point_world = pv.point_world;
                     single_ptpl.plane_cov = plane.plane_cov;
                     single_ptpl.normal = plane.normal;
                     single_ptpl.center = plane.center;
                     single_ptpl.d = plane.d;
                     single_ptpl.layer = current_layer;
+                    // hr 11.21
+                    single_ptpl.cov_lidar = pv.cov_lidar;
                 }
                 return;
             } else {
@@ -900,7 +907,7 @@ void pubVoxelMap(const std::unordered_map<VOXEL_LOC, OctoTree *> &voxel_map, con
         if (p_list.layer >= 4) {
             printf("p_list 's layer = %d\n", p_list.layer);
         }
-        // TODO：0406指定发布对应平面
+        // hr 0406指定发布对应平面
         {
             if (p_list.layer == 0) {
                 if (p_list.is_plane) {

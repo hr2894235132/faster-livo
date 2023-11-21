@@ -60,7 +60,7 @@ publish:
   pub_voxel_map: false
   publish_max_voxel_layer: 0         # 不再使用
   # publish_only_voxel_layer: 3        # only publish 0,1,2 layer's plane
-  # pub_point_cloud: true
+  pub_point_cloud: true
   dense_map_enable: false
   pub_point_cloud_skip: 5             # publish one points per five points
 

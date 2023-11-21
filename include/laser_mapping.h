@@ -106,13 +106,17 @@ namespace faster_lio {
 
         void Finish();
 
-        void calcPointcov(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &world_lidar_, CloudPtr scan_undistort_,
+        void calcPointcov(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &world_lidar_, const CloudPtr &scan_undistort_,
                           std::vector<pointWithCov> pv_list);
+
         void MapIncremental(std::vector<M3D> crossmat_list, std::vector<M3D> body_var);
 
         static bool var_contrast(pointWithCov &x, pointWithCov &y) {
             return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
         }
+
+        M3D transformLidarCovToWorld(Eigen::Vector3d &point_lidar, const Eigen::Matrix3d &cov_lidar,
+                                     const StatesGroup &_state);
 
     private:
         template<typename T>
