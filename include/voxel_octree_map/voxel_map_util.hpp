@@ -511,7 +511,7 @@ void transformLidar(const faster_lio::StatesGroup &state, const shared_ptr<faste
     for (size_t i = 0; i < input_cloud->size(); i++) {
         PointType p_c = input_cloud->points[i];
         Eigen::Vector3d p(p_c.x, p_c.y, p_c.z);
-        // TODO:0301先转换为imu系
+        // 0301先转换为imu系
         p = p_imu->Lidar_R_wrt_IMU_ * p + p_imu->Lidar_T_wrt_IMU_;
 
         p = state.rot_end * p + state.pos_end;

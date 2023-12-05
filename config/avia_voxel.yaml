@@ -1,37 +1,37 @@
 common:
   lid_topic: "/livox/lidar"
-  imu_topic: "/new_imu"
+  imu_topic: "/livox/imu"
   # imu_topic: "/camera/imu"
   time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
 
 preprocess:
   lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
-  scan_line: 1
-  blind: 0.05
+  scan_line: 6
+  blind: 4
   time_scale: 1e-3
 
 noise_model:
   ranging_cov: 0.04 #0.04 0.02
-  angle_cov: 0.1 #0.1 0.05
+  angle_cov: 0.05 #0.1 0.05
 
 mapping:
-  acc_cov: 0.1
-  gyr_cov: 0.003
-  acc_cov_scale: 1 #100
-  gyr_cov_scale: 0.01 #10000
-  b_acc_cov: 0.001 #0.0001 #0.001
-  b_gyr_cov: 0.00003 #0.0001 #0.00003
-  fov_degree: 70
-  det_range: 260.0
+  # acc_cov: 0.1
+  # gyr_cov: 0.1
+  acc_cov_scale: 0.1 #100
+  gyr_cov_scale: 0.1 #10000
+  b_acc_cov: 0.0001 #0.0001 #0.001
+  b_gyr_cov: 0.0001 #0.0001 #0.00003
+  fov_degree: 90
+  det_range: 450.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
   # extrinsic_T: [ -0.017020, 0.085815, -0.024827 ]
   # extrinsic_R: [ 0.046790, -0.998811, 0.013708,
   #                  -0.023212, -0.014807, -0.999621,
   #                  0.998635, 0.046454, -0.023877]
-  extrinsic_T: [ -0.0275814, 0.0145758, -0.085423 ]
+  extrinsic_T: [ 0.04165, 0.02326, -0.0284 ]
   extrinsic_R: [ 1, 0, 0,
                  0, 1, 0,
-                 0, 0, 1]
+                 0, 0, 1 ]
 
 camera:
     # img_topic: /usb_cam/image_raw
@@ -72,13 +72,13 @@ pcd_save:
   # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 feature_extract_enable: false
-point_filter_num: 2
-max_iteration: 10 #10 default 3
+point_filter_num: 3
+max_iteration: 3 #10 default 3
 dense_map_enable : 1
 depth_img_enable : 0
-filter_size_surf: 0.1 #0.05
-filter_size_map: 0.1 #0.15            # 暂时未用到，代码中为0， 即倾向于将降采样后的scan中的所有点加入map
-cube_side_length: 20 #20 default 1000
+filter_size_surf: 0.5 #0.05
+filter_size_map: 0.5 #0.15            # 暂时未用到，代码中为0， 即倾向于将降采样后的scan中的所有点加入map
+cube_side_length: 1000 #20 default 1000
 
 debug : 0
 grid_size : 30 # 40
@@ -89,7 +89,7 @@ outlier_threshold : 300 # 78 100 156 建议较暗的场景为50~250，较亮的�
 ncc_en: false 
 ncc_thre: 0 
 img_point_cov : 1 # 100 The covariance of photometric errors per pixel.
-laser_point_cov : 0.001 # 0.001 The covariance of point-to-plane redisual per point.
+laser_point_cov : 1 # 0.001 The covariance of point-to-plane redisual per point.
 cam_fx: 426.551167166986
 cam_fy: 426.6142447926181
 cam_cx: 429.1314081919893
@@ -101,12 +101,12 @@ esti_plane_threshold: 0.1        # default=0.1
 
 voxel:
     voxel_size: 3
-    max_layer: 5                 # 4 layer, 0, 1, 2, 3
+    max_layer: 4                 # 4 layer, 0, 1, 2, 3
     layer_point_size: [5, 5, 5, 5, 5]
     plannar_threshold: 0.01
-    max_points_size: 600
-    max_cov_points_size: 600
+    max_points_size: 1000
+    max_cov_points_size: 1000
     
 Result:
     write_kitti_log: false
-    result_path: "/home/hr/workspace/faster_lio_ws/src/faster-lio/kitt_log.txt"
+    result_path: "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log/traj_tum.txt"

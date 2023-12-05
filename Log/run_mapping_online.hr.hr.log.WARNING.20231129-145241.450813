@@ -1,0 +1,91 @@
+Log file created at: 2023/11/29 14:52:41
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+W1129 14:52:41.203496 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.203747 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.203923 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.204123 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.303808 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.303877 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.303894 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.304136 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.304494 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.304584 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.403589 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.403697 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.405407 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.405468 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.407196 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.407533 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.409260 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.409329 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.410686 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.410740 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.411985 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.505051 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.507918 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.508459 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.518066 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.518239 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.530488 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.531111 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.547308 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.548077 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.554451 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.554543 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.559890 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.604817 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.611063 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.611655 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.618336 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.618468 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.625483 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.625931 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.632701 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.632828 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.639108 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.639215 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.644591 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.705091 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.710947 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.711380 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.716964 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:41.717084 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.721601 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.721670 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.726411 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.726707 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.731772 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.731912 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.737838 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.802923 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.809526 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.809633 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.815623 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.816058 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.822557 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.822683 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.829157 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.829843 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.837778 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.837924 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.844514 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.903075 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.909121 450813 laser_mapping.cc:517] Too few points, skip this scan! 812064352, 0
+W1129 14:52:41.909261 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.919358 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.936580 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.952826 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.954044 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.961479 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.961621 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.985739 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:41.987040 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:41.994143 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:42.025494 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:42.031764 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:42.032202 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:42.049345 450813 laser_mapping.cc:517] Too few points, skip this scan! 813479728, 0
+W1129 14:52:42.049894 450813 laser_mapping.cc:372] No point, skip this scan!
+W1129 14:52:42.078999 450813 laser_mapping.cc:517] Too few points, skip this scan! 812636000, 0
+W1129 14:52:42.096622 450813 laser_mapping.cc:372] No point, skip this scan!

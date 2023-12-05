@@ -1,0 +1,4 @@
+Log file created at: 2023/12/05 14:46:54
+Running on machine: hr
+Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
+I1205 14:46:54.735780 70861 laser_mapping.cc:175] lidar_type 1

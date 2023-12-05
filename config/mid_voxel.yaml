@@ -2,12 +2,12 @@ common:
   lid_topic: "/livox/lidar"
   imu_topic: "/new_imu"
   # imu_topic: "/camera/imu"
-  time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+  time_sync_en: true         # ONLY turn on when external time synchronization is really not possible
 
 preprocess:
   lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
   scan_line: 1
-  blind: 0.05
+  blind: 0.1
   time_scale: 1e-3
 
 noise_model:
@@ -15,12 +15,12 @@ noise_model:
   angle_cov: 0.1 #0.1 0.05
 
 mapping:
-  acc_cov: 0.1
-  gyr_cov: 0.003
-  acc_cov_scale: 1 #100
-  gyr_cov_scale: 0.01 #10000
-  b_acc_cov: 0.001 #0.0001 #0.001
-  b_gyr_cov: 0.00003 #0.0001 #0.00003
+#  acc_cov: 0.1
+#  gyr_cov: 0.003
+  acc_cov_scale: 0.4 #0.4 #0.1 #100
+  gyr_cov_scale: 0.25 #0.25 #0.003 #10000
+  b_acc_cov: 0.0043 #0.001 # 0.001 #0.0001 #0.001
+  b_gyr_cov: 0.000266 #0.00003 # 0.00003 #0.0001 #0.00003
   fov_degree: 70
   det_range: 260.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
@@ -72,18 +72,18 @@ pcd_save:
   # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 feature_extract_enable: false
-point_filter_num: 2
-max_iteration: 10 #10 default 3
+point_filter_num: 1
+max_iteration: 4 #10 default 3
 dense_map_enable : 1
-depth_img_enable : 0
-filter_size_surf: 0.1 #0.05
+depth_img_enable : 1
+filter_size_surf: 0.4 #0.05
 filter_size_map: 0.1 #0.15            # 暂时未用到，代码中为0， 即倾向于将降采样后的scan中的所有点加入map
 cube_side_length: 20 #20 default 1000
 
 debug : 0
 grid_size : 30 # 40
 patch_size : 6 #8
-img_enable : 1
+img_enable : 0
 lidar_enable : 1
 outlier_threshold : 300 # 78 100 156 建议较暗的场景为50~250，较亮的场景为500~1000。该值越小，vio子模块越快，但抗退化能力越弱。
 ncc_en: false 
@@ -100,7 +100,7 @@ ivox_nearby_type: 18             # 6, 18, 26
 esti_plane_threshold: 0.1        # default=0.1
 
 voxel:
-    voxel_size: 3
+    voxel_size: 3.0
     max_layer: 4                 # 4 layer, 0, 1, 2, 3
     layer_point_size: [5, 5, 5, 5, 5]
     plannar_threshold: 0.01
