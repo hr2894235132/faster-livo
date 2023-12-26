@@ -11,16 +11,16 @@ preprocess:
   time_scale: 1e-3
 
 noise_model:
-  ranging_cov: 0.04 #0.04 0.02
+  ranging_cov: 0.02 #0.04 0.02
   angle_cov: 0.1 #0.1 0.05
 
 mapping:
 #  acc_cov: 0.1
 #  gyr_cov: 0.003
-  acc_cov_scale: 0.4 #0.4 #0.1 #100
-  gyr_cov_scale: 0.25 #0.25 #0.003 #10000
-  b_acc_cov: 0.0043 #0.001 # 0.001 #0.0001 #0.001
-  b_gyr_cov: 0.000266 #0.00003 # 0.00003 #0.0001 #0.00003
+  acc_cov_scale: 0.1 #0.4 #0.1 #100
+  gyr_cov_scale: 0.1 #0.25 #0.003 #10000
+  b_acc_cov: 0.001 # 0.0043 0.001 # 0.001 #0.0001 #0.001
+  b_gyr_cov: 0.001 # 0.000266 0.00003 # 0.00003 #0.0001 #0.00003
   fov_degree: 70
   det_range: 260.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
@@ -62,7 +62,7 @@ publish:
   # publish_only_voxel_layer: 3        # only publish 0,1,2 layer's plane
   pub_point_cloud: true
   dense_map_enable: false
-  pub_point_cloud_skip: 5             # publish one points per five points
+  pub_point_cloud_skip: 1             # publish one points per five points
 
 path_save_en: false                 # 保存轨迹，用于精度计算和比较
 
@@ -72,7 +72,7 @@ pcd_save:
   # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 feature_extract_enable: false
-point_filter_num: 1
+point_filter_num: 3
 max_iteration: 4 #10 default 3
 dense_map_enable : 1
 depth_img_enable : 1
@@ -83,7 +83,7 @@ cube_side_length: 20 #20 default 1000
 debug : 0
 grid_size : 30 # 40
 patch_size : 6 #8
-img_enable : 0
+img_enable : 1
 lidar_enable : 1
 outlier_threshold : 300 # 78 100 156 建议较暗的场景为50~250，较亮的场景为500~1000。该值越小，vio子模块越快，但抗退化能力越弱。
 ncc_en: false 
@@ -100,7 +100,7 @@ ivox_nearby_type: 18             # 6, 18, 26
 esti_plane_threshold: 0.1        # default=0.1
 
 voxel:
-    voxel_size: 3.0
+    voxel_size: 1.0
     max_layer: 4                 # 4 layer, 0, 1, 2, 3
     layer_point_size: [5, 5, 5, 5, 5]
     plannar_threshold: 0.01

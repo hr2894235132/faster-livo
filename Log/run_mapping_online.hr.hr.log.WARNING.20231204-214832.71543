@@ -1,4 +1,0 @@
-Log file created at: 2023/12/04 21:48:32
-Running on machine: hr
-Log line format: [IWEF]mmdd hh:mm:ss.uuuuuu threadid file:line] msg
-W1204 21:48:32.622771 71543 laser_mapping.cc:369] No point, skip this scan!

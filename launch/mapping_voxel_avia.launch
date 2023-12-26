@@ -13,7 +13,7 @@
     <param name="cube_side_length" type="double" value="1000"/>
     <param name="runtime_pos_log_enable" type="bool" value="1"/>
     <node pkg="faster_lio" type="run_mapping_online" name="laserMapping" output="screen">
-        <rosparam file="$(find faster_lio)/config/camera_pinhole_our.yaml"/>
+        <rosparam file="$(find faster_lio)/config/camera_pinhole_avia.yaml"/>
     </node>
 
     <group if="$(arg rviz)">

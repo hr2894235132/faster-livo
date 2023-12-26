@@ -7,6 +7,15 @@
 
 #include "laser_mapping.h"
 
+#ifdef USE_BACKWARD
+#define BACKWARD_HAS_DW 1
+#include "backward.hpp"
+namespace backward
+{
+    backward::SignalHandling sh;
+}
+#endif
+
 /// run the lidar mapping in online mode
 
 DEFINE_string(traj_log_file, "/home/hr/workspace/faster_lio_ws/src/faster-lio/Log/traj.txt", "path to traj log file");

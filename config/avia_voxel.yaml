@@ -2,25 +2,25 @@ common:
   lid_topic: "/livox/lidar"
   imu_topic: "/livox/imu"
   # imu_topic: "/camera/imu"
-  time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+  time_sync_en: true         # ONLY turn on when external time synchronization is really not possible
 
 preprocess:
   lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
   scan_line: 6
-  blind: 4
+  blind: 0.5
   time_scale: 1e-3
 
 noise_model:
   ranging_cov: 0.04 #0.04 0.02
-  angle_cov: 0.05 #0.1 0.05
+  angle_cov: 0.1 #0.1 0.05
 
 mapping:
   # acc_cov: 0.1
   # gyr_cov: 0.1
-  acc_cov_scale: 0.1 #100
-  gyr_cov_scale: 0.1 #10000
-  b_acc_cov: 0.0001 #0.0001 #0.001
-  b_gyr_cov: 0.0001 #0.0001 #0.00003
+  acc_cov_scale: 0.5 #100
+  gyr_cov_scale: 0.25 #10000
+  b_acc_cov: 0.0043 #0.0001 #0.001
+  b_gyr_cov: 0.000266 #0.0001 #0.00003
   fov_degree: 90
   det_range: 450.0
   extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
@@ -36,14 +36,14 @@ mapping:
 camera:
     # img_topic: /usb_cam/image_raw
     # img_topic:  /camera/image_color
-    img_topic: "/camera/color/image_raw"
-    # img_topic: "/color/image"
+#    img_topic: "/camera/color/image_raw"
+    img_topic: "/left_camera/image"
     #xiyuan
     # lidar to camera
-    Rcl: [0.0110805,-0.999823,0.0151929,
-         -0.0410198,-0.0156355,-0.999036,
-          0.999097,0.0104466,-0.0411858]
-    Pcl: [0.0183, 0.0762623, -0.0305996]
+    Rcl: [ 0.00162756,-0.999991,0.00390957,
+           -0.0126748,-0.00392989,-0.999912,
+           0.999918,0.00157786,-0.012681 ]
+    Pcl: [ 0.0409257, 0.0318424, -0.0927219 ]
     # camera to lidar
     # Rcl: [0.0110805, -0.0410198, 0.999097,
     #      -0.999823, -0.0156355, 0.0104466,
@@ -60,7 +60,7 @@ publish:
   pub_voxel_map: true
   publish_max_voxel_layer: 0         # 不再使用
   # publish_only_voxel_layer: 3        # only publish 0,1,2 layer's plane
-  # pub_point_cloud: true
+  pub_point_cloud: true
   dense_map_enable: false
   pub_point_cloud_skip: 5             # publish one points per five points
 
@@ -72,17 +72,17 @@ pcd_save:
   # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 feature_extract_enable: false
-point_filter_num: 3
-max_iteration: 3 #10 default 3
+point_filter_num: 1
+max_iteration: 4 #10 default 3
 dense_map_enable : 1
-depth_img_enable : 0
-filter_size_surf: 0.5 #0.05
-filter_size_map: 0.5 #0.15            # 暂时未用到，代码中为0， 即倾向于将降采样后的scan中的所有点加入map
-cube_side_length: 1000 #20 default 1000
+#depth_img_enable : 0
+filter_size_surf: 0.4 # 0.15 #0.05
+filter_size_map: 0.3 #0.15            # 暂时未用到，代码中为0， 即倾向于将降采样后的scan中的所有点加入map
+cube_side_length: 20 #20 default 1000
 
 debug : 0
-grid_size : 30 # 40
-patch_size : 6 #8
+grid_size : 40 # 40
+patch_size : 8 #8
 img_enable : 1
 lidar_enable : 1
 outlier_threshold : 300 # 78 100 156 建议较暗的场景为50~250，较亮的场景为500~1000。该值越小，vio子模块越快，但抗退化能力越弱。
@@ -90,17 +90,17 @@ ncc_en: false
 ncc_thre: 0 
 img_point_cov : 1 # 100 The covariance of photometric errors per pixel.
 laser_point_cov : 1 # 0.001 The covariance of point-to-plane redisual per point.
-cam_fx: 426.551167166986
-cam_fy: 426.6142447926181
-cam_cx: 429.1314081919893
-cam_cy: 247.64043896840604
+cam_fx: 453.483063
+cam_fy: 453.254913
+cam_cx: 318.908851
+cam_cy: 234.238189
 
 ivox_grid_resolution: 0.2        # default=0.2
 ivox_nearby_type: 18             # 6, 18, 26
 esti_plane_threshold: 0.1        # default=0.1
 
 voxel:
-    voxel_size: 3
+    voxel_size: 3.0
     max_layer: 4                 # 4 layer, 0, 1, 2, 3
     layer_point_size: [5, 5, 5, 5, 5]
     plannar_threshold: 0.01

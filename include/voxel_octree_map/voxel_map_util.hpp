@@ -620,6 +620,68 @@ void updateVoxelMap(const std::vector<pointWithCov> &input_points, const float v
     }
 }
 
+/* hr 11.15 多线程加速版本的地图更新 */
+void updateVoxelMapOmp(const std::vector<pointWithCov> &input_points, const float voxel_size, const int max_layer,
+                       const std::vector<int> &layer_point_size, const int max_points_size,
+                       const int max_cov_points_size, const float planer_threshold,
+                       std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map) {
+    unordered_map <VOXEL_LOC, vector<pointWithCov>> position_idx_map;
+    int insert_count = 0, update_count = 0;
+    uint plsize = input_points.size();
+
+    double t_update_start = omp_get_wtime();
+    for (uint i = 0; i < plsize; i++) {
+        const pointWithCov p_v = input_points[i];
+        float loc_xyz[3];
+        for (int j = 0; j < 3; j++) {
+            loc_xyz[j] = p_v.point[j] / voxel_size;
+            if (loc_xyz[j] < 0) {
+                loc_xyz[j] -= 1.0;
+            }
+        }
+        VOXEL_LOC position((int64_t) loc_xyz[0], (int64_t) loc_xyz[1],
+                           (int64_t) loc_xyz[2]);
+        auto iter = feat_map.find(position);
+        if (iter != feat_map.end()) {
+//            feat_map[position]->UpdateOctoTree(p_v);
+            // hr 更新的点很多，故考虑多线程更新，先缓存再延迟更新
+            update_count++;
+            position_idx_map[position].push_back(p_v);
+        } else {
+            insert_count++;
+            // 插入的点相较于更新的点要少的多，故直接单线程插入
+            auto *octo_tree = new OctoTree(max_layer, 0, layer_point_size, max_points_size, max_cov_points_size,
+                                           planer_threshold);
+            feat_map[position] = octo_tree;
+            feat_map[position]->quater_length_ = voxel_size / 4;
+            feat_map[position]->voxel_center_[0] = (0.5 + position.x) * voxel_size;
+            feat_map[position]->voxel_center_[1] = (0.5 + position.y) * voxel_size;
+            feat_map[position]->voxel_center_[2] = (0.5 + position.z) * voxel_size;
+            feat_map[position]->UpdateOctoTree(p_v);
+        }
+    }
+    double t_update_end = omp_get_wtime();
+    std::printf("Insert & store time:  %.4fs\n", t_update_end - t_update_start);
+    t_update_start = omp_get_wtime();
+#ifdef MP_EN
+    omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for default(none) shared(position_idx_map, feat_map)
+#endif
+    for (size_t b = 0; b < position_idx_map.bucket_count(); ++b) {
+        for (auto bi = position_idx_map.begin(b); bi != position_idx_map.end(b); ++bi) {
+            VOXEL_LOC position = bi->first;
+            for (const pointWithCov &p_v: bi->second) {
+                feat_map[position]->UpdateOctoTree(p_v);
+            }
+        }
+    }
+    t_update_end = omp_get_wtime();
+    std::printf("Update:  %.4fs\n", t_update_end - t_update_start);
+
+    std::printf("Insert: %d  Update: %d \n", insert_count, update_count);
+
+}
+
 
 void build_single_residual(const pointWithCov &pv, const OctoTree *current_octo, const int current_layer,
                            const int max_layer, const double sigma_num, bool &is_success, double &prob,
