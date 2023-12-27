@@ -70,7 +70,7 @@ namespace faster_lio {
         double filter_size_surf_min, filter_size_corner_min = 0;
         std::vector<int> layer_point_size;
 
-        // TODO：12.1 hr 打印状态信息文件
+        // 12.1 hr 打印状态信息文件
         fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"), std::ios::out);
         fout_out.open(DEBUG_FILE_DIR("mat_out.txt"), std::ios::out);
         if (fout_pre && fout_out)
@@ -78,13 +78,13 @@ namespace faster_lio {
         else
             std::cout << "~~~~" << ROOT_DIR << " doesn't exist" << std::endl;
 
-        // TODO:0420 保存bag文件
+        // 0420 保存bag文件
         if (write_rosbag) {
             save_pose_file.open(pose_file);
             bag.open(bag_file, rosbag::bagmode::Write);
         }
 
-        // todo:12.8 新增视觉相关参数
+        // 12.8 新增视觉相关参数
         nh.param<int>("dense_map_enable", dense_map_en, 1);
         nh.param<int>("img_enable", img_en, 1);
         nh.param<int>("lidar_enable", lidar_en, 1);
@@ -132,7 +132,7 @@ namespace faster_lio {
         nh.param<int>("pcd_save/interval", pcd_save_interval_, -1);
         nh.param<std::vector<double>>("mapping/extrinsic_T", extrinT_, std::vector<double>());
         nh.param<std::vector<double>>("mapping/extrinsic_R", extrinR_, std::vector<double>());
-        // todo:12.8 new param
+        // 12.8 new param
         nh.param<double>("mapping/gyr_cov_scale", gyr_cov_scale, 1.0);
         nh.param<double>("mapping/acc_cov_scale", acc_cov_scale, 1.0);
         nh.param<vector<double>>("camera/Pcl", cameraextrinT, vector<double>()); // 相机雷达外参
@@ -148,14 +148,14 @@ namespace faster_lio {
         nh.param<int>("ivox_nearby_type", ivox_nearby_type, 18);
 
 #ifdef USE_VOXEL_OCTREE
-        // TODO:0216 自适应体素结构参数 mapping algorithm params
+        // 0216 自适应体素结构参数 mapping algorithm params
         // noise model params
         nh.param<double>("noise_model/ranging_cov", ranging_cov, 0.02);
         nh.param<double>("noise_model/angle_cov", angle_cov, 0.05);
 
         nh.param<int>("voxel/max_points_size", max_points_size, 100);
         nh.param<int>("voxel/max_cov_points_size", max_cov_points_size, 100);
-        nh.param<vector<int>>("voxel/layer_point_size", layer_point_size, vector<int>()); // TODO:0216原代码中使用double
+        nh.param<vector<int>>("voxel/layer_point_size", layer_point_size, vector<int>()); // 0216原代码中使用double
         nh.param<int>("voxel/max_layer", max_layer, 2);
         nh.param<double>("voxel/voxel_size", max_voxel_size, 1.0);
         std::cout << "voxel_size:" << max_voxel_size << std::endl;
@@ -205,7 +205,7 @@ namespace faster_lio {
 
         voxel_scan_.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 
-//        // todo:12.8 降采样系数
+//        // 12.8 降采样系数
 //        downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 //        downSizeFilterMap.setLeafSize(filter_size_map_min_, filter_size_map_min_, filter_size_map_min_);
 
@@ -214,7 +214,7 @@ namespace faster_lio {
         if (!vk::camera_loader::loadFromRosNs("laserMapping", lidar_selector->cam))
             throw std::runtime_error("Camera model not correctly specified.");
 
-        // todo:12.8 初始化lidar_selection和imu的一些参数
+        // 12.8 初始化lidar_selection和imu的一些参数
         lidar_selector->MIN_IMG_COUNT = MIN_IMG_COUNT; // 1000
         lidar_selector->debug = debug; // 0 是否显示debug信息
         lidar_selector->grid_size = grid_size;
@@ -255,7 +255,7 @@ namespace faster_lio {
         std::string lidar_topic, imu_topic, img_topic;
         nh.param<std::string>("common/lid_topic", lidar_topic, "/livox/lidar");
         nh.param<std::string>("common/imu_topic", imu_topic, "/livox/imu");
-        // todo:12.8 新增图像话题
+        // 12.8 新增图像话题
         nh.param<std::string>("camera/img_topic", img_topic, "/usb_cam/image_raw");
         cout << "debug:" << debug << " MIN_IMG_COUNT: " << MIN_IMG_COUNT << endl;
         pcl_wait_pub_->clear(); // world frame
@@ -277,7 +277,7 @@ namespace faster_lio {
         // 订阅imu
         sub_imu_ = nh.subscribe<sensor_msgs::Imu>(imu_topic, 200000,
                                                   [this](const sensor_msgs::Imu::ConstPtr &msg) { IMUCallBack(msg); });
-        // todo:12.8 订阅img
+        // TODO 2023 12.27 待解决R3live数据集图像数据的问题
         sub_img_ = nh.subscribe<sensor_msgs::Image>(img_topic, 200000,
                                                     [this](const sensor_msgs::ImageConstPtr &msg) {
                                                         IMGCallBack(msg);
@@ -288,7 +288,7 @@ namespace faster_lio {
         path_.header.frame_id = "camera_init";
 
 
-        // todo：12.8 新增publisher
+        // 12.8 新增publisher
         img_pub_ = it.advertise("/rgb_img", 1);
         pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_only_pointCloud", 100);
         pubLaserCloudFullResRgb = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_rgb", 100);
@@ -300,10 +300,10 @@ namespace faster_lio {
         voxel_map_pub = nh.advertise<visualization_msgs::MarkerArray>("/planes", 10000);
 #endif
 
-        // TODO：更新成livo pubLaserCloudFullRes
+        // 更新成livo pubLaserCloudFullRes
         pub_laser_cloud_world_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100);
         pub_laser_cloud_body_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
-        // TODO：更新成livo pubLaserCloudEffect
+        // 更新成livo pubLaserCloudEffect
         pub_laser_cloud_effect_world_ = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_effect_world",
                                                                                100);
         pub_odom_aft_mapped_ = nh.advertise<nav_msgs::Odometry>("/Odometry", 10);
@@ -341,7 +341,7 @@ namespace faster_lio {
          */
 #ifdef USE_IKFOM
         p_imu_->Process(measures_, kf_, scan_undistort_);
-        // TODO:12.1 hr 获取kf预测的全局状态（imu）
+        // 12.1 hr 获取kf预测的全局状态（imu）
         state_point_ = kf_.get_x(); // 前向传播后body的状态预测值 body:imu
         pos_lidar_ = state_point_.pos + state_point_.rot * state_point_.offset_T_L_I; // global系下 lidar的位置
 #else
@@ -390,7 +390,7 @@ namespace faster_lio {
         flg_EKF_inited_ = (LidarMeasures_.lidar_beg_time_ - first_lidar_time_) >= options::INIT_TIME; // 0.1
 
 #ifdef USE_VOXEL_OCTREE
-        // FIXME 初始化体素-八叉树表征地图
+        // 初始化体素-八叉树表征地图
         if (flg_EKF_inited_ && !init_map) {
             pcl::PointCloud<pcl::PointXYZINormal>::Ptr world_lidar_(new pcl::PointCloud<pcl::PointXYZINormal>);
             transformLidar(state, p_imu_, scan_undistort_, world_lidar_);
@@ -577,7 +577,7 @@ namespace faster_lio {
                                             point_this[2] = 0.001;
                                         M3D cov_lidar;
                                         calcBodyCov(point_this, ranging_cov, angle_cov, cov_lidar);
-                                        // TODO 12.26
+                                        // 12.26
                                         point_this += lidar_T_wrt_IMU;
                                         M3D point_crossmat;
                                         point_crossmat << SKEW_SYM_MATRIX(point_this);
@@ -662,7 +662,7 @@ namespace faster_lio {
                                 corr_normvect->push_back(pl);
                                 total_residual_ += fabs(dis);
                             }
-                            // TODO: 11.20 res_mean_last出现异常值 -nan，effect_feat_num_为0
+                            // 11.20 res_mean_last出现异常值 -nan，effect_feat_num_为0（已解决）
                             res_mean_last = total_residual_ / effect_feat_num_;
                             match_time += std::chrono::duration_cast<std::chrono::duration<double >>(
                                     scan_match_time_end - scan_match_time_start).count() * 1000;
@@ -732,7 +732,7 @@ namespace faster_lio {
                             laserCloudOri->resize(cur_pts);
                             corr_normvect->reserve(cur_pts);
                             for (int i = 0; i < cur_pts; i++) {
-                                // todo 新增残差 <= 2.0约束
+                                //  新增残差 <= 2.0约束
                                 if (point_selected_surf_[i] && (residuals_[i] <= 2.0)) {
                                     laserCloudOri->points[effect_feat_num_] = scan_down_body_->points[i];
                                     corr_normvect->points[effect_feat_num_] = normvec->points[i];
@@ -749,7 +749,7 @@ namespace faster_lio {
                             res_mean_last = total_residual_ / effect_feat_num_;
                             if (effect_feat_num_ < 1) {
                                 LOG(WARNING) << "No Effective Points!";
-                                continue; // todo :return? or continue or break
+                                continue; // return? or continue or break
                             }
                             // debug:
                             cout << "[ mapping ]: Effective feature num: " << effect_feat_num_ << " res_mean_last "
@@ -935,7 +935,7 @@ namespace faster_lio {
                 "lidar IEKF");
 #endif
 
-        // TODO:保存tum格式的轨迹数据
+        // 保存tum格式的轨迹数据
 //        SaveTrajTUM(LidarMeasures_.lidar_beg_time_, state.rot_end, state.pos_end);
         /******* Publish odometry *******/
         if (pub_odom_aft_mapped_) {
@@ -1041,7 +1041,7 @@ namespace faster_lio {
                t1 - t0, aver_time_match, aver_time_solve, t3 - t1, t5 - t3, aver_time_consu,
                aver_time_icp, aver_time_const_H_time);
 #else
-        // TODO: 0217新增记录点数以及各部分时间
+        //  0217新增记录点数以及各部分时间
         mean_raw_points =
                 mean_raw_points * (frame_num_ - 1) / frame_num_ + (double) (scan_undistort_->size()) / frame_num_;
         mean_ds_points =
@@ -1181,7 +1181,7 @@ namespace faster_lio {
             return;
         }
 
-        // TODO 如果是第一帧imu数据，做重力方向对齐
+        // 如果是第一帧imu数据，做重力方向对齐
         // ...
         last_timestamp_imu_ = timestamp;
         mtx_buffer_.lock();
@@ -1448,8 +1448,7 @@ namespace faster_lio {
 //            pointWithCov pv;
 //            pv.point << scan_down_body_->points[i].x, scan_down_body_->points[i].y, scan_down_body_->points[i].z;
 //            // 计算lidar点的cov
-//            // FIXME 这里错误的使用世界系的点来calcBodyCov时 反倒在某些seq（比如hilti2022的03 15）上效果更好
-//            //  需要考虑是不是init_plane时使用更大的cov更好
+
 //            // 注意这个在每次迭代时是存在重复计算的 因为lidar系的点云covariance是不变的
 //            // M3D cov_lidar = calcBodyCov(pv.point, ranging_cov, angle_cov);
 //            M3D cov_lidar = body_var[i];
@@ -1983,7 +1982,7 @@ namespace faster_lio {
         LOG(INFO) << "finish done";
     }
 
-// TODO:0403 将计算世界坐标系下点的协方差模块化
+// 0403 将计算世界坐标系下点的协方差模块化
     void
     LaserMapping::calcPointcov(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &world_lidar_, const CloudPtr &scan_undistort,
                                std::vector<pointWithCov> pv_list) {
@@ -2001,7 +2000,7 @@ namespace faster_lio {
 //            point_crossmat << SKEW_SYM_MATRIX(point_this);
 //            M3D cov;
 //            calcBodyCov(point_this, ranging_cov, angle_cov, cov);
-            // TODO:按照论文中公式（3）修改cov计算
+            // 按照论文中公式（3）修改cov计算
 //            cov = state.rot_end * cov * state.rot_end.transpose() +
 //                  state.rot_end * (-point_crossmat) * state.cov.block<3, 3>(0, 0) *
 //                  (-point_crossmat).transpose() * state.rot_end.transpose() +
@@ -2035,7 +2034,7 @@ namespace faster_lio {
         }
     }
 
-    // TODO hr 11.6 修改并封装转换函数
+    // hr 11.6 修改并封装转换函数
     M3D LaserMapping::transformLidarCovToWorld(Eigen::Vector3d &point_lidar, const Eigen::Matrix3d &cov_lidar,
                                                const StatesGroup &_state) {
         M3D point_crossmat;
@@ -2055,7 +2054,7 @@ namespace faster_lio {
         /* body -> world */
         // 注意pose的var是先pos 后rot
         point_crossmat << SKEW_SYM_MATRIX(point_body);
-        //  TODO: state.rot_end.conjugate()
+        // state.rot_end.conjugate()
         M3D cov_world = _state.rot_end * cov_body * _state.rot_end.transpose() +
                         _state.rot_end * (-point_crossmat) * _state.cov.block<3, 3>(0, 0) *
                         (-point_crossmat).transpose() * _state.rot_end.transpose() + _state.cov.block<3, 3>(3, 3);

@@ -144,7 +144,7 @@ namespace faster_lio {
 
         void InitLidarSelection();
 
-        // todo:12.8 新增函数 img_msg -> cv::Mat
+        // 12.8 新增函数 img_msg -> cv::Mat
         cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg) {
             cv::Mat img;
             img = cv_bridge::toCvShare(img_msg, "bgr8")->image;
@@ -152,14 +152,14 @@ namespace faster_lio {
         }
 
     private:
-        // TODO：12.1 hr 打印状态信息
+        // 12.1 hr 打印状态信息
         std::ofstream fout_pre, fout_out;
         /// modules
         IVoxType::Options ivox_options_;
         std::shared_ptr<IVoxType> ivox_ = nullptr;                    // localmap in ivox
         std::shared_ptr<PointCloudPreprocess> preprocess_ = nullptr;  // point cloud preprocess
         std::shared_ptr<ImuProcess> p_imu_ = nullptr;                 // imu process
-        // TODO: 编译器可能无法区分这是一个成员函数声明还是一个成员变量声明，产生歧义。
+        // 编译器可能无法区分这是一个成员函数声明还是一个成员变量声明，产生歧义。
 //    lidar_selection::LidarSelectorPtr lidar_selector(new lidar_selection::LidarSelector(grid_size, new SparseMap));
         lidar_selection::LidarSelectorPtr lidar_selector{new lidar_selection::LidarSelector(grid_size, new SparseMap)};
 
