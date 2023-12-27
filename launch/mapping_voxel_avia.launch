@@ -26,6 +26,8 @@
     </group>
     <node pkg="image_transport" type="republish" name="republish"
           args="compressed in:=/left_camera/image raw out:=/left_camera/image" output="screen" respawn="true"/>
+<!--    <node pkg="image_transport" type="republish" name="republish"-->
+<!--          args="compressed in:=/camera/image_color raw out:=/camera/image_color" output="screen" respawn="true"/>-->
 
     launch-prefix="gdb -ex run --args" launch-prefix="valgrind --leak-check=full --show-leak-kinds=all"
 

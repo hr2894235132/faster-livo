@@ -186,7 +186,7 @@ public:
         if (evalsReal(evalsMin) < planer_threshold_) {
             std::vector<int> index(points.size());
             std::vector<Eigen::Matrix<double, 6, 6>> temp_matrix(points.size());
-            // TODO: 0213修改range循环格式
+            // 0213修改range循环格式
             for (const auto &point: points) {
                 Eigen::Matrix<double, 6, 3> J;
                 Eigen::Matrix3d F;
@@ -549,7 +549,7 @@ void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_
     cov = direction * range_var * direction.transpose() + A * direction_var * A.transpose(); // 公式1
 }
 
-// TODO:0211 voxel_zie & planner_threshold float -> double but double对性能影响太大
+// 0211 voxel_zie & planner_threshold float -> double but double对性能影响太大
 void buildVoxelMap(const std::vector<pointWithCov> &input_points, const float voxel_size, const int max_layer,
                    const std::vector<int> &layer_point_size, const int max_points_size, const int max_cov_points_size,
                    const float planer_threshold, std::unordered_map<VOXEL_LOC, OctoTree *> &feat_map) {

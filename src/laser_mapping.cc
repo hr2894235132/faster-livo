@@ -575,10 +575,9 @@ namespace faster_lio {
                                         V3D point_this(point.x, point.y, point.z);
                                         if (point_this[2] == 0)
                                             point_this[2] = 0.001;
-
-//                                        point_this += lidar_T_wrt_IMU;
                                         M3D cov_lidar;
                                         calcBodyCov(point_this, ranging_cov, angle_cov, cov_lidar);
+                                        // TODO 12.26
                                         point_this += lidar_T_wrt_IMU;
                                         M3D point_crossmat;
                                         point_crossmat << SKEW_SYM_MATRIX(point_this);
@@ -779,6 +778,8 @@ namespace faster_lio {
                                 const PointType &laser_p = laserCloudOri->points[i];
                                 V3D point_this(laser_p.x, laser_p.y, laser_p.z);
 #ifdef USE_VOXEL_OCTREE
+                                if (point_this[2] == 0)
+                                    point_this[2] = 0.001;
                                 M3D cov_lidar;
                                 calcBodyCov(point_this, ranging_cov, angle_cov, cov_lidar);
                                 cov_lidar = state.rot_end * cov_lidar * state.rot_end.transpose();
@@ -1221,7 +1222,7 @@ namespace faster_lio {
         if (lidar_buffer_.empty() && img_buffer_.empty()) { // has lidar topic or img topic?
             return false;
         }
-        ROS_INFO("In sync");
+//        ROS_INFO("In sync");
         if (meas.is_lidar_end) { // If meas.is_lidar_end==true, means it just after scan end, clear all buffer in meas.
             meas.measures.clear(); // imu and img measurements
             meas.is_lidar_end = false;
@@ -1274,7 +1275,7 @@ namespace faster_lio {
         if (img_buffer_.empty()) { // no img topic, means only has lidar topic
             // imu message needs to be larger than lidar_end_time, keep complete propagate.
             /*** push imu_ data, and pop from imu_ buffer ***/
-            if (last_timestamp_imu_ < lidar_end_time_)
+            if (last_timestamp_imu_ < lidar_end_time_ + 0.02)
                 return false;
 
             struct MeasureGroup m; // standard method to keep imu message.
@@ -2015,7 +2016,7 @@ namespace faster_lio {
 //            // hr 11.20
 //            M3D cov_world = transformLidarCovToWorld(point_this, cov_lidar, state);
 //            pv.cov = cov_world;
-            point_this = lidar_R_wrt_IMU * point_this + lidar_T_wrt_IMU;
+            point_this = point_this + lidar_T_wrt_IMU;
             M3D point_crossmat; // 斜对角矩阵
             point_crossmat << SKEW_SYM_MATRIX(point_this);
             M3D cov;
